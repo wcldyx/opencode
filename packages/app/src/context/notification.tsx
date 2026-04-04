@@ -272,6 +272,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         if (settings.sounds.agentEnabled()) {
           void playSoundById(settings.sounds.agent())
         }
+        void platform.pulse?.("task")
 
         append({
           directory,
@@ -309,6 +310,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         if (settings.sounds.errorsEnabled()) {
           void playSoundById(settings.sounds.errors())
         }
+        void platform.pulse?.("alert")
 
         const error = "error" in event.properties ? event.properties.error : undefined
         append({

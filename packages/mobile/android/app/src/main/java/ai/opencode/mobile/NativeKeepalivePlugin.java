@@ -20,6 +20,7 @@ public class NativeKeepalivePlugin extends Plugin {
 
   @PluginMethod
   public void configure(PluginCall call) {
+    KeepaliveService.attach(getContext());
     String url = call.getString("url");
     if (url == null || url.isEmpty()) {
       call.reject("Missing url");
@@ -40,13 +41,15 @@ public class NativeKeepalivePlugin extends Plugin {
 
   @PluginMethod
   public void track(PluginCall call) {
+    KeepaliveService.attach(getContext());
     String sessionID = call.getString("sessionID");
+    String directory = call.getString("directory");
     if (sessionID == null || sessionID.isEmpty()) {
       call.resolve();
       return;
     }
 
-    KeepaliveService.track(sessionID);
+    KeepaliveService.track(sessionID, directory);
     try {
       Log.d(TAG, "track sessionID=" + sessionID);
       start();
@@ -59,6 +62,7 @@ public class NativeKeepalivePlugin extends Plugin {
 
   @PluginMethod
   public void untrack(PluginCall call) {
+    KeepaliveService.attach(getContext());
     String sessionID = call.getString("sessionID");
     if (sessionID != null && !sessionID.isEmpty()) KeepaliveService.untrack(sessionID);
     call.resolve();
@@ -66,6 +70,7 @@ public class NativeKeepalivePlugin extends Plugin {
 
   @PluginMethod
   public void setNotify(PluginCall call) {
+    KeepaliveService.attach(getContext());
     Boolean notify = call.getBoolean("notify");
     KeepaliveService.setNotify(notify == null ? true : notify);
     call.resolve();

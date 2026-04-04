@@ -40,6 +40,9 @@ export type Platform = {
   /** Send the task-complete alert (mobile can use a dedicated channel) */
   notifyTaskDone?(title: string, description?: string, href?: string): Promise<void>
 
+  /** Play a lightweight foreground haptic cue (mobile only) */
+  pulse?(type?: "task" | "alert"): Promise<void>
+
   /** Open directory picker dialog (native on Tauri, server-backed on web) */
   openDirectoryPickerDialog?(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
 
@@ -88,7 +91,7 @@ export type Platform = {
   }): Promise<void> | void
 
   /** Track a session in native background service (mobile only) */
-  trackSession?(sessionID: string): Promise<void> | void
+  trackSession?(sessionID: string, directory?: string): Promise<void> | void
 
   /** Stop tracking a session in native background service (mobile only) */
   untrackSession?(sessionID: string): Promise<void> | void

@@ -25,11 +25,13 @@ import javax.net.ssl.X509TrustManager;
 
 public class MainActivity extends BridgeActivity {
   private static final String TAG = "MainActivity";
+  private static final String EXTRA_HREF = "href";
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(NativeHttpPlugin.class);
     registerPlugin(NativeKeepalivePlugin.class);
+    KeepaliveService.attach(this);
 
     try {
       TrustManager[] trust = new TrustManager[] {
@@ -82,6 +84,15 @@ public class MainActivity extends BridgeActivity {
         }
       }
     );
+
+    route(getIntent());
+  }
+
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    route(intent);
   }
 
   @Override
@@ -94,5 +105,14 @@ public class MainActivity extends BridgeActivity {
   public void onPause() {
     KeepaliveService.setActive(false);
     super.onPause();
+  }
+
+  private void route(Intent intent) {
+    if (intent == null) return;
+    String href = intent.getStringExtra(EXTRA_HREF);
+    if (href == null || href.isEmpty()) return;
+    if (bridge == null || bridge.getWebView() == null) return;
+    bridge.getWebView().loadUrl("http://localhost" + href);
+    intent.removeExtra(EXTRA_HREF);
   }
 }

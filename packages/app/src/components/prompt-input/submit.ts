@@ -46,7 +46,7 @@ type FollowupSendInput = {
   messageID?: string
   optimisticBusy?: boolean
   before?: () => Promise<boolean> | boolean
-  track?: (sessionID: string) => Promise<void> | void
+  track?: (sessionID: string, directory?: string) => Promise<void> | void
   untrack?: (sessionID: string) => Promise<void> | void
 }
 
@@ -85,7 +85,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         return false
       }
 
-      await input.track?.(input.draft.sessionID)
+      await input.track?.(input.draft.sessionID, input.draft.sessionDirectory)
       await input.client.session.command({
         sessionID: input.draft.sessionID,
         command: cmd,
@@ -155,7 +155,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       return false
     }
 
-    await input.track?.(input.draft.sessionID)
+    await input.track?.(input.draft.sessionID, input.draft.sessionDirectory)
     await input.client.session.promptAsync({
       sessionID: input.draft.sessionID,
       agent: input.draft.agent,
