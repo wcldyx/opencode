@@ -105,6 +105,19 @@ function buildNotificationIndex(list: Notification[]) {
   return index
 }
 
+function summarize(text: string) {
+  const clean = text.replace(/\s+/g, " ").trim()
+  if (!clean) return ""
+
+  const chars = Array.from(clean)
+  const width = 42
+  const first = chars.slice(0, width).join("")
+  const second = chars.slice(width, width * 2).join("")
+
+  if (!second) return chars.length > width ? `${first}…` : first
+  return chars.length > width * 2 ? `${first}\n${second}…` : `${first}\n${second}`
+}
+
 export const { use: useNotification, provider: NotificationProvider } = createSimpleContext({
   name: "Notification",
   init: () => {
@@ -216,6 +229,25 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         .catch(() => undefined)
     }
 
+    const reply = async (directory: string, sessionID?: string) => {
+      if (!sessionID) return undefined
+
+      const messages = await globalSDK.client.session
+        .messages({ directory, sessionID, limit: 1 })
+        .then((x) => x.data)
+        .catch(() => undefined)
+
+      const item = messages?.[0]
+      if (!item || item.info.role !== "assistant") return undefined
+
+      const text = item.parts
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n")
+
+      return summarize(text)
+    }
+
     const viewedInCurrentSession = (directory: string, sessionID?: string) => {
       const activeDirectory = currentDirectory()
       const activeSession = currentSession()
@@ -247,7 +279,13 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
 
         const href = `/${base64Encode(directory)}/session/${sessionID}`
         if (settings.notifications.agent()) {
-          void platform.notify(language.t("notification.session.responseReady.title"), session.title ?? sessionID, href)
+          void reply(directory, sessionID).then((body) => {
+            const text = body || session.title || sessionID
+            void (
+              platform.notifyTaskDone?.(language.t("notification.session.responseReady.title"), text, href) ??
+              platform.notify(language.t("notification.session.responseReady.title"), text, href)
+            )
+          })
         }
       })
     }

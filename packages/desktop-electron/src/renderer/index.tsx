@@ -189,6 +189,22 @@ const createPlatform = (): Platform => {
       }
     },
 
+    notifyTaskDone: async (title, description, href) => {
+      const focused = await window.api.getWindowFocused().catch(() => document.hasFocus())
+      if (focused) return
+
+      const notification = new Notification(title, {
+        body: description ?? "",
+        icon: "https://opencode.ai/favicon-96x96-v3.png",
+      })
+      notification.onclick = () => {
+        void window.api.showWindow()
+        void window.api.setWindowFocus()
+        handleNotificationClick(href)
+        notification.close()
+      }
+    },
+
     fetch: (input, init) => {
       if (input instanceof Request) return fetch(input)
       return fetch(input, init)

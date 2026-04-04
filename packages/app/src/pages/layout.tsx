@@ -216,11 +216,17 @@ export default function Layout(props: ParentProps) {
       if (document.visibilityState !== "hidden") return
       reset()
     }
+    const back = (e: Event) => {
+      if (!layout.mobileSidebar.opened()) return
+      layout.mobileSidebar.hide()
+      e.preventDefault()
+    }
     makeEventListener(window, "pointerup", stop)
     makeEventListener(window, "pointercancel", stop)
     makeEventListener(window, "blur", stop)
     makeEventListener(window, "blur", blur)
     makeEventListener(document, "visibilitychange", hide)
+    makeEventListener(window, "opencode:back", back)
   })
 
   const sidebarHovering = createMemo(() => !layout.sidebar.opened() && state.hoverProject !== undefined)

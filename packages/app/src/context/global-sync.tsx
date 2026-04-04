@@ -1,6 +1,8 @@
 import type {
   Config,
+  Message,
   OpencodeClient,
+  Part,
   Path,
   Project,
   ProviderAuthResponse,
@@ -9,6 +11,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client"
 import { showToast } from "@opencode-ai/ui/toast"
 import { getFilename } from "@opencode-ai/util/path"
+import { makeEventListener } from "@solid-primitives/event-listener"
 import { createContext, getOwner, onCleanup, onMount, type ParentProps, untrack, useContext } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
@@ -74,6 +77,9 @@ function createGlobalSync() {
   let bootingRoot = false
   let eventFrame: number | undefined
   let eventTimer: ReturnType<typeof setTimeout> | undefined
+  let tick: ReturnType<typeof setInterval> | undefined
+  let stop: ReturnType<typeof setTimeout> | undefined
+  let round = 0
 
   onCleanup(() => {
     active = false
@@ -81,6 +87,8 @@ function createGlobalSync() {
   onCleanup(() => {
     if (eventFrame !== undefined) cancelAnimationFrame(eventFrame)
     if (eventTimer !== undefined) clearTimeout(eventTimer)
+    if (tick !== undefined) clearInterval(tick)
+    if (stop !== undefined) clearTimeout(stop)
   })
 
   const cacheProjects = () => {
@@ -280,6 +288,99 @@ function createGlobalSync() {
     return promise
   }
 
+  const clear = () => {
+    if (tick !== undefined) {
+      clearInterval(tick)
+      tick = undefined
+    }
+    if (stop !== undefined) {
+      clearTimeout(stop)
+      stop = undefined
+    }
+  }
+
+  const reconcilePending = async (dir: string, setStore: (typeof children.children)[string][1], ids: string[]) => {
+    const rows = await Promise.all(
+      ids.map((sessionID) =>
+        sdkFor(dir)
+          .session.messages({ sessionID, limit: 50 })
+          .then((x) => {
+            const items = (x.data ?? []).filter((v) => !!v?.info?.id)
+            const msgs = items.map((v) => v.info as Message).sort((a, b) => a.id.localeCompare(b.id))
+            const parts = items.map((v) => ({
+              id: v.info.id,
+              part: [...v.parts].sort((a, b) => a.id.localeCompare(b.id)) as Part[],
+            }))
+
+            setStore("message", sessionID, reconcile(msgs, { key: "id" }))
+            for (const item of parts) {
+              setStore("part", item.id, reconcile(item.part, { key: "id" }))
+            }
+
+            const busy = msgs.some((m) => m.role === "assistant" && typeof m.time.completed !== "number")
+            if (!busy) setStore("session_status", sessionID, { type: "idle" })
+            return busy
+          })
+          .catch(() => true),
+      ),
+    )
+
+    return rows.some(Boolean)
+  }
+
+  const settle = () => {
+    const run = ++round
+
+    const once = async () => {
+      const dirs = Object.keys(children.children)
+      if (dirs.length === 0) {
+        clear()
+        return
+      }
+
+      const rows = await Promise.all(
+        dirs.map(async (dir) => {
+          const child = children.children[dir]
+          if (!child) return false
+          const [store, setStore] = child
+          const pending = Object.entries(store.message)
+            .filter(([, msgs]) =>
+              (msgs ?? []).some((m) => m.role === "assistant" && typeof m.time.completed !== "number"),
+            )
+            .map(([sessionID]) => sessionID)
+
+          const hot = Object.values(store.session_status).some((x) => x && x.type !== "idle")
+          if (!hot && pending.length === 0) return false
+
+          const running = await sdkFor(dir)
+            .session.status()
+            .then((x) => {
+              const next = x.data ?? {}
+              setStore("session_status", next)
+              return Object.values(next).some((v) => v && v.type !== "idle")
+            })
+            .catch(() => hot)
+
+          if (running || pending.length === 0) return running
+          return reconcilePending(dir, setStore, pending)
+        }),
+      )
+
+      if (run !== round) return
+      if (rows.some(Boolean)) return
+      clear()
+    }
+
+    void once()
+    if (tick !== undefined) return
+    tick = setInterval(() => {
+      void once()
+    }, 1000)
+    stop = setTimeout(() => {
+      clear()
+    }, 30_000)
+  }
+
   const unsub = globalSDK.event.listen((e) => {
     const directory = e.name
     const event = e.details
@@ -369,6 +470,21 @@ function createGlobalSync() {
       }, 0)
     }
     void bootstrap()
+
+    const sync = () => {
+      queue.refresh()
+      for (const directory of Object.keys(children.children)) {
+        queue.push(directory)
+      }
+      settle()
+    }
+
+    makeEventListener(document, "visibilitychange", () => {
+      if (document.visibilityState !== "visible") return
+      sync()
+    })
+    makeEventListener(window, "focus", sync)
+    makeEventListener(window, "opencode:resume", sync as EventListener)
   })
 
   const projectApi = {

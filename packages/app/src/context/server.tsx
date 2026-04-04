@@ -1,6 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { type Accessor, batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
+import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
 import { useCheckServerHealth } from "@/utils/server-health"
 
@@ -99,6 +100,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     disableHealthCheck?: boolean
     servers?: Array<ServerConnection.Any>
   }) => {
+    const platform = usePlatform()
     const checkServerHealth = useCheckServerHealth()
 
     const [store, setStore, _, ready] = persisted(
@@ -107,6 +109,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         list: [] as StoredServer[],
         projects: {} as Record<string, StoredProject[]>,
         lastProject: {} as Record<string, string>,
+        active: undefined as ServerConnection.Key | undefined,
       }),
     )
 
@@ -136,7 +139,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     })
 
     const [state, setState] = createStore({
-      active: props.defaultServer,
+      active: store.active ?? props.defaultServer,
       healthy: undefined as boolean | undefined,
     })
 
@@ -168,7 +171,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     }
 
     function setActive(input: ServerConnection.Key) {
-      if (state.active !== input) setState("active", input)
+      if (state.active === input) return
+      setState("active", input)
+      setStore("active", input)
     }
 
     function add(input: ServerConnection.Http) {
@@ -182,7 +187,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         } else {
           setStore("list", store.list.length, conn)
         }
-        setState("active", ServerConnection.key(conn))
+        const key = ServerConnection.key(conn)
+        setState("active", key)
+        setStore("active", key)
         return conn
       })
     }
@@ -193,7 +200,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         setStore("list", list)
         if (state.active === key) {
           const next = list[0]
-          setState("active", next ? ServerConnection.Key.make(url(next)) : props.defaultServer)
+          const target = next ? ServerConnection.Key.make(url(next)) : props.defaultServer
+          setState("active", target)
+          setStore("active", target)
         }
       })
     }
@@ -219,9 +228,27 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const current: Accessor<ServerConnection.Any | undefined> = createMemo(
       () => allServers().find((s) => ServerConnection.key(s) === state.active) ?? allServers()[0],
     )
+
+    createEffect(() => {
+      const conn = current()
+      if (!conn) return
+      const key = ServerConnection.key(conn)
+      if (state.active !== key) setState("active", key)
+      if (store.active !== key) setStore("active", key)
+    })
     const isLocal = createMemo(() => {
       const c = current()
       return (c?.type === "sidecar" && c.variant === "base") || (c?.type === "http" && isLocalHost(c.http.url))
+    })
+
+    createEffect(() => {
+      const conn = current()
+      if (!conn || conn.type !== "http") return
+      void platform.configureTracker?.({
+        url: conn.http.url,
+        username: conn.http.username,
+        password: conn.http.password,
+      })
     })
 
     return {

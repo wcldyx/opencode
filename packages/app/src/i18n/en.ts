@@ -511,7 +511,7 @@ export const dict = {
   "notification.question.description": "{{sessionTitle}} in {{projectName}} has a question",
   "notification.action.goToSession": "Go to session",
 
-  "notification.session.responseReady.title": "Response ready",
+  "notification.session.responseReady.title": "Task complete",
   "notification.session.error.title": "Session error",
   "notification.session.error.fallbackDescription": "An error occurred",
 

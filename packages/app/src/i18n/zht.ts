@@ -483,7 +483,7 @@ export const dict = {
   "notification.question.description": "{{sessionTitle}}（{{projectName}}）有一個問題",
   "notification.action.goToSession": "前往工作階段",
 
-  "notification.session.responseReady.title": "回覆已就緒",
+  "notification.session.responseReady.title": "任務已完成",
   "notification.session.error.title": "工作階段錯誤",
   "notification.session.error.fallbackDescription": "發生錯誤",
 

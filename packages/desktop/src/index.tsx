@@ -335,6 +335,33 @@ const createPlatform = (): Platform => {
         .catch(() => undefined)
     },
 
+    notifyTaskDone: async (title, description, href) => {
+      const granted = await isPermissionGranted().catch(() => false)
+      const permission = granted ? "granted" : await requestPermission().catch(() => "denied")
+      if (permission !== "granted") return
+
+      const win = getCurrentWindow()
+      const focused = await win.isFocused().catch(() => document.hasFocus())
+      if (focused) return
+
+      await Promise.resolve()
+        .then(() => {
+          const notification = new Notification(title, {
+            body: description ?? "",
+            icon: "https://opencode.ai/favicon-96x96-v3.png",
+          })
+          notification.onclick = () => {
+            const win = getCurrentWindow()
+            void win.show().catch(() => undefined)
+            void win.unminimize().catch(() => undefined)
+            void win.setFocus().catch(() => undefined)
+            handleNotificationClick(href)
+            notification.close()
+          }
+        })
+        .catch(() => undefined)
+    },
+
     fetch: (input, init) => {
       if (input instanceof Request) {
         return tauriFetch(input)

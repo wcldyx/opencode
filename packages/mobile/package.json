@@ -1,0 +1,37 @@
+{
+  "name": "@opencode-ai/mobile",
+  "private": true,
+  "version": "1.3.13",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsgo -b",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap": "cap",
+    "sync:android": "bun run build && cap sync android",
+    "open:android": "cap open android",
+    "run:android": "cap run android",
+    "android:debug": "bun run sync:android && cd android && ./gradlew clean :app:assembleDebug",
+    "android:install": "bun run sync:android && cd android && ./gradlew clean :app:installDebug",
+    "android:release:apk": "bun run sync:android && cd android && ./gradlew clean :app:assembleRelease",
+    "android:release:aab": "bun run sync:android && cd android && ./gradlew clean :app:bundleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/browser": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
+    "@opencode-ai/app": "workspace:*",
+    "solid-js": "catalog:"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:"
+  }
+}

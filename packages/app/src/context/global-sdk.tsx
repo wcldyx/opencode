@@ -21,16 +21,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const platform = usePlatform()
     const abort = new AbortController()
 
-    const eventFetch = (() => {
-      if (!platform.fetch || !server.current) return
-      try {
-        const url = new URL(server.current.http.url)
-        const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1"
-        if (url.protocol === "http:" && !loopback) return platform.fetch
-      } catch {
-        return
-      }
-    })()
+    const eventFetch = platform.fetch && server.current ? platform.fetch : undefined
 
     const currentServer = server.current
     if (!currentServer) throw new Error(language.t("error.globalSDK.noServerAvailable"))
@@ -207,6 +198,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       clearHeartbeat()
     }
 
+    const reconnect = () => {
+      if (!started) return
+      attempt?.abort()
+    }
+
     onMount(() => {
       makeEventListener(document, "visibilitychange", () => {
         if (document.visibilityState !== "visible") return
@@ -214,6 +210,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (Date.now() - lastEventAt < HEARTBEAT_TIMEOUT_MS) return
         attempt?.abort()
       })
+      makeEventListener(window, "focus", reconnect)
+      makeEventListener(window, "opencode:resume", reconnect as EventListener)
     })
 
     onCleanup(() => {

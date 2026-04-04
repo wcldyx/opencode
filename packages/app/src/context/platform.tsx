@@ -11,7 +11,7 @@ type UpdateInfo = { updateAvailable: boolean; version?: string }
 
 export type Platform = {
   /** Platform discriminator */
-  platform: "web" | "desktop"
+  platform: "web" | "desktop" | "mobile"
 
   /** Desktop OS (Tauri only) */
   os?: "macos" | "windows" | "linux"
@@ -36,6 +36,9 @@ export type Platform = {
 
   /** Send a system notification (optional deep link) */
   notify(title: string, description?: string, href?: string): Promise<void>
+
+  /** Send the task-complete alert (mobile can use a dedicated channel) */
+  notifyTaskDone?(title: string, description?: string, href?: string): Promise<void>
 
   /** Open directory picker dialog (native on Tauri, server-backed on web) */
   openDirectoryPickerDialog?(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
@@ -75,6 +78,12 @@ export type Platform = {
 
   /** Set the preferred display backend (desktop only) */
   setDisplayBackend?(backend: DisplayBackend): Promise<void>
+
+  /** Configure native background tracker (mobile only) */
+  configureTracker?(input: { url: string; username?: string; password?: string }): Promise<void> | void
+
+  /** Track a session in native background service (mobile only) */
+  trackSession?(sessionID: string): Promise<void> | void
 
   /** Parse markdown to HTML using native parser (desktop only, returns unprocessed code blocks) */
   parseMarkdown?(markdown: string): Promise<string>

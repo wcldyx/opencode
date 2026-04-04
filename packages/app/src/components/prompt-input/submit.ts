@@ -10,6 +10,7 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { usePermission } from "@/context/permission"
+import { usePlatform } from "@/context/platform"
 import { type ContextItem, type ImageAttachmentPart, type Prompt, usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -45,6 +46,7 @@ type FollowupSendInput = {
   messageID?: string
   optimisticBusy?: boolean
   before?: () => Promise<boolean> | boolean
+  track?: (sessionID: string) => Promise<void> | void
 }
 
 const draftText = (prompt: Prompt) => prompt.map((part) => ("content" in part ? part.content : "")).join("")
@@ -82,6 +84,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         return false
       }
 
+      await input.track?.(input.draft.sessionID)
       await input.client.session.command({
         sessionID: input.draft.sessionID,
         command: cmd,
@@ -150,6 +153,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       return false
     }
 
+    await input.track?.(input.draft.sessionID)
     await input.client.session.promptAsync({
       sessionID: input.draft.sessionID,
       agent: input.draft.agent,
@@ -203,6 +207,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const sync = useSync()
   const globalSync = useGlobalSync()
   const local = useLocal()
+  const platform = usePlatform()
   const permission = usePermission()
   const prompt = usePrompt()
   const layout = useLayout()
@@ -560,6 +565,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       messageID,
       optimisticBusy: sessionDirectory === projectDirectory,
       before: waitForWorktree,
+      track: platform.trackSession,
     }).catch((err) => {
       pending.delete(session.id)
       if (sessionDirectory === projectDirectory) {

@@ -35,6 +35,7 @@ import { getSessionPrefetch, SESSION_PREFETCH_TTL } from "@/context/global-sync/
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
+import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSettings } from "@/context/settings"
@@ -324,6 +325,7 @@ export default function Page() {
   const sync = useSync()
   const dialog = useDialog()
   const language = useLanguage()
+  const platform = usePlatform()
   const sdk = useSDK()
   const settings = useSettings()
   const prompt = usePrompt()
@@ -1633,6 +1635,7 @@ export default function Page() {
         globalSync,
         draft: item,
         optimisticBusy: item.sessionDirectory === sdk.directory,
+        track: platform.trackSession,
       }).catch((err) => {
         setFollowup("failed", input.sessionID, input.id)
         fail(err)
