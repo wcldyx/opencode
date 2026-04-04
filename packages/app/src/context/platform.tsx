@@ -80,10 +80,21 @@ export type Platform = {
   setDisplayBackend?(backend: DisplayBackend): Promise<void>
 
   /** Configure native background tracker (mobile only) */
-  configureTracker?(input: { url: string; username?: string; password?: string }): Promise<void> | void
+  configureTracker?(input: {
+    url: string
+    username?: string
+    password?: string
+    notify?: boolean
+  }): Promise<void> | void
 
   /** Track a session in native background service (mobile only) */
   trackSession?(sessionID: string): Promise<void> | void
+
+  /** Stop tracking a session in native background service (mobile only) */
+  untrackSession?(sessionID: string): Promise<void> | void
+
+  /** Toggle background task notifications (mobile only) */
+  setTrackerNotify?(notify: boolean): Promise<void> | void
 
   /** Parse markdown to HTML using native parser (desktop only, returns unprocessed code blocks) */
   parseMarkdown?(markdown: string): Promise<string>

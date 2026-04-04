@@ -1,7 +1,6 @@
 import { Capacitor, registerPlugin } from "@capacitor/core"
 import { Browser } from "@capacitor/browser"
 import { App } from "@capacitor/app"
-import { Haptics, ImpactStyle } from "@capacitor/haptics"
 import { LocalNotifications } from "@capacitor/local-notifications"
 import { handleNotificationClick } from "@opencode-ai/app"
 
@@ -39,12 +38,15 @@ type Native = {
 }
 
 type Keepalive = {
-  configure(input: { url: string; username?: string; password?: string }): Promise<void>
+  configure(input: { url: string; username?: string; password?: string; notify?: boolean }): Promise<void>
   track(input: { sessionID: string }): Promise<void>
+  untrack(input: { sessionID: string }): Promise<void>
+  setNotify(input: { notify: boolean }): Promise<void>
   openNotificationSettings(): Promise<void>
 }
 
-const channel = "task-done"
+const task = "opencode-task"
+const alert = "opencode-alert"
 const webFetch = globalThis.fetch.bind(globalThis)
 const nativeHttp = registerPlugin<Native>("NativeHttp")
 const nativeKeepalive = registerPlugin<Keepalive>("NativeKeepalive")
@@ -71,10 +73,18 @@ async function init() {
   await LocalNotifications.requestPermissions().catch(() => undefined)
 
   await LocalNotifications.createChannel({
-    id: channel,
+    id: task,
     name: "任务完成",
     description: "本地任务完成提醒",
     importance: 5,
+    vibration: true,
+  })
+
+  await LocalNotifications.createChannel({
+    id: alert,
+    name: "OpenCode 通知",
+    description: "OpenCode 系统通知",
+    importance: 4,
     vibration: true,
   })
 
@@ -106,14 +116,50 @@ export async function notifyTaskDone(title: string, body?: string, href?: string
     return
   }
 
-  await Haptics.impact({ style: ImpactStyle.Light }).catch(() => undefined)
+  const state = await App.getState().catch(() => ({ isActive: true }))
+  if (state.isActive) return
+
   await LocalNotifications.schedule({
     notifications: [
       {
         id: Date.now(),
         title,
         body: body ?? "",
-        channelId: channel,
+        channelId: task,
+        extra: { href },
+      },
+    ],
+  })
+}
+
+export async function notify(title: string, body?: string, href?: string) {
+  await init()
+
+  if (!Capacitor.isNativePlatform()) {
+    if (!("Notification" in window)) return
+
+    const permission =
+      Notification.permission === "default"
+        ? await Notification.requestPermission().catch(() => "denied")
+        : Notification.permission
+
+    if (permission !== "granted") return
+
+    const inView = document.visibilityState === "visible" && document.hasFocus()
+    if (inView) return
+
+    const note = new Notification(title, { body: body ?? "" })
+    note.onclick = () => handleNotificationClick(href)
+    return
+  }
+
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: Date.now(),
+        title,
+        body: body ?? "",
+        channelId: alert,
         extra: { href },
       },
     ],
@@ -274,9 +320,14 @@ export function bindLifecycle() {
   })
 }
 
-export async function configureTracker(input: { url: string; username?: string; password?: string }) {
+export async function configureTracker(input: { url: string; username?: string; password?: string; notify?: boolean }) {
   if (!Capacitor.isNativePlatform()) return
   await nativeKeepalive.configure(input).catch(() => undefined)
+}
+
+export async function setTrackerNotify(notify: boolean) {
+  if (!Capacitor.isNativePlatform()) return
+  await nativeKeepalive.setNotify({ notify }).catch(() => undefined)
 }
 
 export async function ensureNotifications() {
@@ -295,4 +346,10 @@ export async function trackSession(sessionID: string) {
   if (!Capacitor.isNativePlatform()) return
   if (!sessionID) return
   await nativeKeepalive.track({ sessionID }).catch(() => undefined)
+}
+
+export async function untrackSession(sessionID: string) {
+  if (!Capacitor.isNativePlatform()) return
+  if (!sessionID) return
+  await nativeKeepalive.untrack({ sessionID }).catch(() => undefined)
 }

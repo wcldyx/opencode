@@ -83,4 +83,16 @@ public class MainActivity extends BridgeActivity {
       }
     );
   }
+
+  @Override
+  public void onResume() {
+    KeepaliveService.setActive(true);
+    super.onResume();
+  }
+
+  @Override
+  public void onPause() {
+    KeepaliveService.setActive(false);
+    super.onPause();
+  }
 }

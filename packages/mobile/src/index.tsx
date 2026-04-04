@@ -10,10 +10,13 @@ import {
   configureTracker,
   ensureNotifications,
   nativeFetch,
+  notify,
   notifyTaskDone,
   openNotificationSettings,
   openLink,
+  setTrackerNotify,
   trackSession,
+  untrackSession,
 } from "./bridge"
 
 const root = document.getElementById("root")
@@ -51,11 +54,13 @@ const platform: Platform = {
   back,
   forward: () => window.history.forward(),
   restart: async () => window.location.reload(),
-  notify: notifyTaskDone,
+  notify,
   notifyTaskDone,
   fetch: nativeFetch,
   configureTracker,
+  setTrackerNotify,
   trackSession,
+  untrackSession,
   getDefaultServer: async () => {
     const stored = read()
     return stored ? ServerConnection.Key.make(stored) : null

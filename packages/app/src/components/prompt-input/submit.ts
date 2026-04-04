@@ -47,6 +47,7 @@ type FollowupSendInput = {
   optimisticBusy?: boolean
   before?: () => Promise<boolean> | boolean
   track?: (sessionID: string) => Promise<void> | void
+  untrack?: (sessionID: string) => Promise<void> | void
 }
 
 const draftText = (prompt: Prompt) => prompt.map((part) => ("content" in part ? part.content : "")).join("")
@@ -103,6 +104,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       return true
     } catch (err) {
       setIdle()
+      void input.untrack?.(input.draft.sessionID)
       throw err
     }
   }
@@ -166,6 +168,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
   } catch (err) {
     setIdle()
     remove()
+    void input.untrack?.(input.draft.sessionID)
     throw err
   }
 }
@@ -238,11 +241,15 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       queued.abort.abort()
       queued.cleanup()
       pending.delete(sessionID)
+      void platform.untrackSession?.(sessionID)
       return Promise.resolve()
     }
     return sdk.client.session
       .abort({
         sessionID,
+      })
+      .then(() => {
+        void platform.untrackSession?.(sessionID)
       })
       .catch(() => {})
   }
@@ -566,6 +573,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       optimisticBusy: sessionDirectory === projectDirectory,
       before: waitForWorktree,
       track: platform.trackSession,
+      untrack: platform.untrackSession,
     }).catch((err) => {
       pending.delete(session.id)
       if (sessionDirectory === projectDirectory) {

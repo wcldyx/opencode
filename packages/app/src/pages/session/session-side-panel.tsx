@@ -51,6 +51,11 @@ export function SessionSidePanel(props: {
   const fileOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
   const open = createMemo(() => reviewOpen() || fileOpen())
   const reviewTab = createMemo(() => isDesktop())
+  const diffs = createMemo<FileDiff[]>(() => {
+    const list = props.diffs()
+    if (!Array.isArray(list)) return []
+    return list
+  })
   const panelWidth = createMemo(() => {
     if (!open()) return "0px"
     if (reviewOpen()) return `calc(100% - ${layout.session.width()}px)`
@@ -58,7 +63,7 @@ export function SessionSidePanel(props: {
   })
   const treeWidth = createMemo(() => (fileOpen() ? `${layout.fileTree.width()}px` : "0px"))
 
-  const diffFiles = createMemo(() => props.diffs().map((d) => d.file))
+  const diffFiles = createMemo(() => diffs().map((d) => d.file))
   const kinds = createMemo(() => {
     const merge = (a: "add" | "del" | "mix" | undefined, b: "add" | "del" | "mix") => {
       if (!a) return b
@@ -69,7 +74,7 @@ export function SessionSidePanel(props: {
     const normalize = (p: string) => p.replaceAll("\\\\", "/").replace(/\/+$/, "")
 
     const out = new Map<string, "add" | "del" | "mix">()
-    for (const diff of props.diffs()) {
+    for (const diff of diffs()) {
       const file = normalize(diff.file)
       const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
 

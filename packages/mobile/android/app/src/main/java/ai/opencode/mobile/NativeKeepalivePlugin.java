@@ -26,7 +26,8 @@ public class NativeKeepalivePlugin extends Plugin {
       return;
     }
 
-    KeepaliveService.configure(url, call.getString("username"), call.getString("password"));
+    Boolean notify = call.getBoolean("notify");
+    KeepaliveService.configure(url, call.getString("username"), call.getString("password"), notify);
     try {
       Log.d(TAG, "configure url=" + url);
       start();
@@ -60,6 +61,13 @@ public class NativeKeepalivePlugin extends Plugin {
   public void untrack(PluginCall call) {
     String sessionID = call.getString("sessionID");
     if (sessionID != null && !sessionID.isEmpty()) KeepaliveService.untrack(sessionID);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void setNotify(PluginCall call) {
+    Boolean notify = call.getBoolean("notify");
+    KeepaliveService.setNotify(notify == null ? true : notify);
     call.resolve();
   }
 

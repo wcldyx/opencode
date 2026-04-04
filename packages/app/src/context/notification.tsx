@@ -146,6 +146,10 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
 
     const meta = { pruned: false, disposed: false }
 
+    createEffect(() => {
+      void platform.setTrackerNotify?.(settings.notifications.agent())
+    })
+
     const updateUnseen = (scope: "session" | "project", key: string, unseen: Notification[]) => {
       setIndex(scope, "unseen", key, unseen)
       setIndex(scope, "unseenCount", key, unseen.length)
@@ -278,7 +282,9 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         })
 
         const href = `/${base64Encode(directory)}/session/${sessionID}`
+        if (sessionID) void platform.untrackSession?.(sessionID)
         if (settings.notifications.agent()) {
+          if (platform.platform === "mobile") return
           void reply(directory, sessionID).then((body) => {
             const text = body || session.title || sessionID
             void (
@@ -317,6 +323,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
           session?.title ??
           (typeof error === "string" ? error : language.t("notification.session.error.fallbackDescription"))
         const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
+        if (sessionID) void platform.untrackSession?.(sessionID)
         if (settings.notifications.errors()) {
           void platform.notify(language.t("notification.session.error.title"), description, href)
         }

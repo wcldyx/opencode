@@ -431,8 +431,18 @@ export default function Page() {
   }
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
-  const sessionCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
+  const diffs = createMemo<FileDiff[]>(() => {
+    if (!params.id) return []
+    const list = sync.data.session_diff[params.id]
+    if (!Array.isArray(list)) return []
+    return list
+  })
+  const sessionCount = createMemo(() => {
+    if (!params.id) return 0
+    const list = sync.data.session_diff[params.id]
+    if (Array.isArray(list)) return list.length
+    return info()?.summary?.files ?? 0
+  })
   const hasSessionReview = createMemo(() => sessionCount() > 0)
   const canReview = createMemo(() => !!sync.project)
   const reviewTab = createMemo(() => isDesktop())
@@ -648,7 +658,15 @@ export default function Page() {
     return open
   }, desktopReviewOpen())
 
-  const turnDiffs = createMemo(() => lastUserMessage()?.summary?.diffs ?? [])
+  const turnDiffs = createMemo<FileDiff[]>(() => {
+    const diffs = lastUserMessage()?.summary?.diffs
+    if (!Array.isArray(diffs)) return []
+    return diffs
+  })
+  const diffList = (value: unknown): FileDiff[] => {
+    if (!Array.isArray(value)) return []
+    return value as FileDiff[]
+  }
   const changesOptions = createMemo<ChangeMode[]>(() => {
     const list: ChangeMode[] = []
     if (sync.project?.vcs === "git") list.push("git")
@@ -667,18 +685,28 @@ export default function Page() {
     if (store.changes === "git" || store.changes === "branch") return store.changes
   })
   const reviewDiffs = createMemo(() => {
-    if (store.changes === "git") return vcs.diff.git
-    if (store.changes === "branch") return vcs.diff.branch
-    if (store.changes === "session") return diffs()
+    if (store.changes === "git") return diffList(vcs.diff.git)
+    if (store.changes === "branch") return diffList(vcs.diff.branch)
+    if (store.changes === "session") return diffList(diffs())
     return turnDiffs()
   })
   const reviewCount = createMemo(() => {
-    if (store.changes === "git") return vcs.diff.git.length
-    if (store.changes === "branch") return vcs.diff.branch.length
+    if (store.changes === "git") return reviewDiffs().length
+    if (store.changes === "branch") return reviewDiffs().length
     if (store.changes === "session") return sessionCount()
-    return turnDiffs().length
+    return reviewDiffs().length
   })
   const hasReview = createMemo(() => reviewCount() > 0)
+  const modeCount = (mode: ChangeMode) => {
+    if (mode === "git") return diffList(vcs.diff.git).length
+    if (mode === "branch") return diffList(vcs.diff.branch).length
+    if (mode === "session") return sessionCount()
+    return turnDiffs().length
+  }
+  const anyReviewCount = createMemo(() =>
+    Math.max(modeCount("git"), modeCount("branch"), modeCount("session"), modeCount("turn")),
+  )
+  const hasAnyReview = createMemo(() => anyReviewCount() > 0)
   const reviewReady = createMemo(() => {
     if (store.changes === "git") return vcs.ready.git
     if (store.changes === "branch") return vcs.ready.branch
@@ -1066,6 +1094,15 @@ export default function Page() {
   }
 
   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
+
+  createEffect(() => {
+    if (!mobileChanges()) return
+    if (modeCount(store.changes) > 0) return
+    const next = (["session", "turn", "git", "branch"] as ChangeMode[]).find((mode) => modeCount(mode) > 0)
+    if (!next) return
+    if (next === store.changes) return
+    setStore("changes", next)
+  })
   const wantsReview = createMemo(() =>
     isDesktop()
       ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
@@ -1636,6 +1673,7 @@ export default function Page() {
         draft: item,
         optimisticBusy: item.sessionDirectory === sdk.directory,
         track: platform.trackSession,
+        untrack: platform.untrackSession,
       }).catch((err) => {
         setFollowup("failed", input.sessionID, input.id)
         fail(err)
@@ -1918,8 +1956,8 @@ export default function Page() {
                 classes={{ button: "w-full" }}
                 onClick={() => setStore("mobileTab", "changes")}
               >
-                {hasReview()
-                  ? language.t("session.review.filesChanged", { count: reviewCount() })
+                {hasAnyReview()
+                  ? language.t("session.review.filesChanged", { count: anyReviewCount() })
                   : language.t("session.review.change.other")}
               </Tabs.Trigger>
             </Tabs.List>

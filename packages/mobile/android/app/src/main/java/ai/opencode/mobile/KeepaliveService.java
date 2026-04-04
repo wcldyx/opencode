@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit;
 public class KeepaliveService extends Service {
   private static final String TAG = "KeepaliveService";
   private static final String KEEPALIVE_CHANNEL = "opencode-keepalive";
-  private static final String TASK_CHANNEL = "task-done-v2";
+  private static final String TASK_CHANNEL = "opencode-task";
   private static final int KEEPALIVE_ID = 4001;
   private static final long TRACK_GRACE_MS = 15_000;
 
@@ -46,13 +46,29 @@ public class KeepaliveService extends Service {
   private static volatile String url;
   private static volatile String username;
   private static volatile String password;
+  private static volatile boolean notify = true;
+  private static volatile boolean active;
 
   private ScheduledExecutorService poller;
 
-  public static void configure(String nextUrl, String nextUsername, String nextPassword) {
+  public static void configure(String nextUrl, String nextUsername, String nextPassword, Boolean nextNotify) {
+    if (url != null && nextUrl != null && !url.equals(nextUrl)) {
+      tracked.clear();
+      seen.clear();
+      start.clear();
+    }
     url = nextUrl;
     username = nextUsername;
     password = nextPassword;
+    if (nextNotify != null) notify = nextNotify;
+  }
+
+  public static void setActive(boolean next) {
+    active = next;
+  }
+
+  public static void setNotify(boolean next) {
+    notify = next;
   }
 
   public static void track(String sessionID) {
@@ -127,6 +143,7 @@ public class KeepaliveService extends Service {
             seen.add(sessionID);
             continue;
           }
+          if (!completed(sessionID)) continue;
           finish(sessionID);
           continue;
         }
@@ -136,9 +153,41 @@ public class KeepaliveService extends Service {
           if (System.currentTimeMillis() - at < TRACK_GRACE_MS) continue;
         }
 
+        if (!completed(sessionID)) continue;
         finish(sessionID);
       }
     } catch (Exception ignored) {
+    }
+  }
+
+  private boolean completed(String sessionID) {
+    try {
+      String target = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+      HttpURLConnection conn = (HttpURLConnection) new URL(target + "/session/" + sessionID + "/message?limit=1").openConnection();
+      conn.setRequestMethod("GET");
+      conn.setConnectTimeout(10_000);
+      conn.setReadTimeout(10_000);
+      conn.setRequestProperty("Accept", "application/json");
+
+      if (password != null && !password.isEmpty()) {
+        String user = username == null || username.isEmpty() ? "opencode" : username;
+        String token = Base64.encodeToString((user + ":" + password).getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        conn.setRequestProperty("Authorization", "Basic " + token);
+      }
+
+      String raw = read(conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream());
+      JSONArray list = parseMessages(raw);
+      if (list == null || list.length() == 0) return false;
+
+      JSONObject item = list.optJSONObject(0);
+      if (item == null) return false;
+      JSONObject info = item.optJSONObject("info");
+      if (info == null || !"assistant".equals(info.optString("role"))) return false;
+
+      JSONObject time = info.optJSONObject("time");
+      return time != null && time.has("completed");
+    } catch (Exception ignored) {
+      return false;
     }
   }
 
@@ -147,6 +196,8 @@ public class KeepaliveService extends Service {
     tracked.remove(sessionID);
     seen.remove(sessionID);
     start.remove(sessionID);
+    if (!notify) return;
+    if (active) return;
     notifyDone(sessionID);
   }
 
@@ -282,6 +333,8 @@ public class KeepaliveService extends Service {
 
       JSONObject info = item.optJSONObject("info");
       if (info == null || !"assistant".equals(info.optString("role"))) return "";
+      JSONObject time = info.optJSONObject("time");
+      if (time == null || !time.has("completed")) return "";
 
       JSONArray parts = item.optJSONArray("parts");
       if (parts == null) return "";
