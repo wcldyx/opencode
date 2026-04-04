@@ -16,6 +16,21 @@ export async function openNotificationSettings() {
   await nativeKeepalive.openNotificationSettings().catch(() => undefined)
 }
 
+export async function backgroundStatus() {
+  if (!Capacitor.isNativePlatform()) return { maker: "", model: "", battery: false }
+  return nativeKeepalive.backgroundStatus().catch(() => ({ maker: "", model: "", battery: false }))
+}
+
+export async function openPowerSettings() {
+  if (!Capacitor.isNativePlatform()) return
+  await nativeKeepalive.openPowerSettings().catch(() => undefined)
+}
+
+export async function openAutoStartSettings() {
+  if (!Capacitor.isNativePlatform()) return
+  await nativeKeepalive.openAutoStartSettings().catch(() => undefined)
+}
+
 export async function trackSession(sessionID: string, directory?: string) {
   if (!Capacitor.isNativePlatform()) return
   if (!sessionID) return

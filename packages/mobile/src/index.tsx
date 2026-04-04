@@ -4,6 +4,7 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface, PlatformProvider, ServerConnection, type Platform } from "@opencode-ai/app"
 import pkg from "../package.json"
 import {
+  backgroundStatus,
   back,
   bindBack,
   bindLifecycle,
@@ -12,8 +13,10 @@ import {
   nativeFetch,
   notify,
   notifyTaskDone,
+  openAutoStartSettings,
   openNotificationSettings,
   openLink,
+  openPowerSettings,
   pulse,
   setTrackerNotify,
   trackSession,
@@ -47,6 +50,30 @@ const write = (value: string | null) => {
 }
 
 const url = read() ?? import.meta.env.VITE_OPENCODE_SERVER_URL ?? "http://localhost:4096"
+const key = "opencode.mobile.bg-hint.v1"
+const gap = 3 * 24 * 60 * 60 * 1000
+
+const seen = () => {
+  if (typeof localStorage === "undefined") return false
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return false
+    const at = Number(raw)
+    if (!Number.isFinite(at)) return false
+    return Date.now() - at < gap
+  } catch {
+    return false
+  }
+}
+
+const mark = () => {
+  if (typeof localStorage === "undefined") return
+  try {
+    localStorage.setItem(key, `${Date.now()}`)
+  } catch {
+    return
+  }
+}
 
 const platform: Platform = {
   platform: "mobile",
@@ -80,6 +107,24 @@ void ensureNotifications().then((ok) => {
   const go = window.confirm("OpenCode 的系统通知已被关闭，后台保活通知将无法显示。现在打开通知设置吗？")
   if (!go) return
   void openNotificationSettings()
+})
+
+void backgroundStatus().then((info) => {
+  if (seen()) return
+  const maker = info.maker.toLowerCase()
+  const oem = maker.includes("vivo") || maker.includes("iqoo")
+  if (!oem) return
+
+  if (info.battery) {
+    const go = window.confirm(
+      "检测到 iQOO/vivo 省电限制，后台任务通知可能失效。现在打开电池优化设置并允许 OpenCode 后台运行吗？",
+    )
+    if (go) void openPowerSettings()
+  }
+
+  const start = window.confirm("为保证后台通知可靠，请开启 OpenCode 自启动权限。现在打开自启动管理吗？")
+  if (start) void openAutoStartSettings()
+  mark()
 })
 
 render(

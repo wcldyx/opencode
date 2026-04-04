@@ -2,8 +2,10 @@ package ai.opencode.mobile;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.ComponentName;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -12,6 +14,7 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "NativeKeepalive")
@@ -92,6 +95,104 @@ public class NativeKeepalivePlugin extends Plugin {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     ctx.startActivity(intent);
     call.resolve();
+  }
+
+  @PluginMethod
+  public void backgroundStatus(PluginCall call) {
+    Context ctx = getContext();
+    String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER;
+    String model = Build.MODEL == null ? "" : Build.MODEL;
+    boolean battery = false;
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      PowerManager mgr = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+      if (mgr != null) {
+        battery = !mgr.isIgnoringBatteryOptimizations(ctx.getPackageName());
+      }
+    }
+
+    JSObject out = new JSObject();
+    out.put("maker", maker);
+    out.put("model", model);
+    out.put("battery", battery);
+    call.resolve(out);
+  }
+
+  @PluginMethod
+  public void openPowerSettings(PluginCall call) {
+    Context ctx = getContext();
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      Intent ask = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        .setData(Uri.parse("package:" + ctx.getPackageName()));
+      ask.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      if (startSafe(ctx, ask)) {
+        call.resolve();
+        return;
+      }
+    }
+
+    Intent list = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    if (startSafe(ctx, list)) {
+      call.resolve();
+      return;
+    }
+
+    Intent app = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+      .setData(Uri.fromParts("package", ctx.getPackageName(), null))
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    startSafe(ctx, app);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void openAutoStartSettings(PluginCall call) {
+    Context ctx = getContext();
+    String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase();
+
+    if (maker.contains("vivo") || maker.contains("iqoo")) {
+      Intent a = new Intent()
+        .setComponent(new ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      if (startSafe(ctx, a)) {
+        call.resolve();
+        return;
+      }
+
+      Intent b = new Intent()
+        .setComponent(new ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      if (startSafe(ctx, b)) {
+        call.resolve();
+        return;
+      }
+
+      Intent c = new Intent()
+        .setComponent(new ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity"))
+        .putExtra("packagename", ctx.getPackageName())
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+      if (startSafe(ctx, c)) {
+        call.resolve();
+        return;
+      }
+    }
+
+    Intent app = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+      .setData(Uri.fromParts("package", ctx.getPackageName(), null))
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    startSafe(ctx, app);
+    call.resolve();
+  }
+
+  private boolean startSafe(Context ctx, Intent intent) {
+    try {
+      if (intent.resolveActivity(ctx.getPackageManager()) == null) return false;
+      ctx.startActivity(intent);
+      return true;
+    } catch (Exception ignored) {
+      return false;
+    }
   }
 
   private void start() {

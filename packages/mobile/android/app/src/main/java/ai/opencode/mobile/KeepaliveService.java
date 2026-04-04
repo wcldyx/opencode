@@ -52,6 +52,7 @@ public class KeepaliveService extends Service {
   private static final String KEY_SEEN = "seen";
   private static final String KEY_START = "start";
   private static final String KEY_DIR = "dir";
+  private static final long[] TASK_VIBRATE = new long[] { 0, 320, 160, 380 };
 
   private static final Set<String> tracked = ConcurrentHashMap.newKeySet();
   private static final Set<String> seen = ConcurrentHashMap.newKeySet();
@@ -240,6 +241,7 @@ public class KeepaliveService extends Service {
 
   private void finish(String sessionID) {
     Log.d(TAG, "finish sessionID=" + sessionID);
+    String href = href(sessionID);
     tracked.remove(sessionID);
     seen.remove(sessionID);
     done.remove(sessionID);
@@ -248,7 +250,7 @@ public class KeepaliveService extends Service {
     persist();
     if (!notify) return;
     if (active || foreground()) return;
-    notifyDone(sessionID);
+    notifyDone(sessionID, href);
   }
 
   private boolean foreground() {
@@ -327,11 +329,10 @@ public class KeepaliveService extends Service {
       .build();
   }
 
-  private void notifyDone(String sessionID) {
+  private void notifyDone(String sessionID, String href) {
     Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
     if (launch == null) launch = new Intent(this, MainActivity.class);
     launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    String href = href(sessionID);
     if (href != null) launch.putExtra("href", href);
     PendingIntent pending = PendingIntent.getActivity(
       this,
@@ -352,7 +353,7 @@ public class KeepaliveService extends Service {
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setDefaults(NotificationCompat.DEFAULT_ALL)
-      .setVibrate(new long[] { 0, 160, 120, 200 })
+      .setVibrate(TASK_VIBRATE)
       .setContentIntent(pending)
       .build();
 
@@ -598,7 +599,7 @@ public class KeepaliveService extends Service {
     );
     done.setDescription("任务完成提醒");
     done.enableVibration(true);
-    done.setVibrationPattern(new long[] { 0, 160, 120, 200 });
+    done.setVibrationPattern(TASK_VIBRATE);
     done.setSound(
       RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
       new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()

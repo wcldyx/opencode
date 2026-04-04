@@ -39,6 +39,9 @@ export type Keepalive = {
   untrack(input: { sessionID: string }): Promise<void>
   setNotify(input: { notify: boolean }): Promise<void>
   openNotificationSettings(): Promise<void>
+  backgroundStatus(): Promise<{ maker: string; model: string; battery: boolean }>
+  openPowerSettings(): Promise<void>
+  openAutoStartSettings(): Promise<void>
 }
 
 export const task = "opencode-task"
