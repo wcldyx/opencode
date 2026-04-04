@@ -252,6 +252,8 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
       return summarize(text)
     }
 
+    const foreground = () => document.visibilityState === "visible" && document.hasFocus()
+
     const viewedInCurrentSession = (directory: string, sessionID?: string) => {
       const activeDirectory = currentDirectory()
       const activeSession = currentSession()
@@ -269,7 +271,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         if (!session) return
         if (session.parentID) return
 
-        if (settings.sounds.agentEnabled()) {
+        if (foreground() && settings.sounds.agentEnabled()) {
           void playSoundById(settings.sounds.agent())
         }
         void platform.pulse?.("task")
@@ -307,7 +309,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         if (meta.disposed) return
         if (session?.parentID) return
 
-        if (settings.sounds.errorsEnabled()) {
+        if (foreground() && settings.sounds.errorsEnabled()) {
           void playSoundById(settings.sounds.errors())
         }
 

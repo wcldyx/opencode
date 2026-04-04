@@ -13,7 +13,6 @@ import {
   nativeFetch,
   notify,
   notifyTaskDone,
-  openAutoStartSettings,
   openNotificationSettings,
   openLink,
   openPowerSettings,
@@ -85,6 +84,9 @@ const platform: Platform = {
   notify,
   notifyTaskDone,
   pulse,
+  openNotificationSettings,
+  openPowerSettings,
+  backgroundStatus,
   fetch: nativeFetch,
   configureTracker,
   setTrackerNotify,
@@ -115,15 +117,12 @@ void backgroundStatus().then((info) => {
   const oem = maker.includes("vivo") || maker.includes("iqoo")
   if (!oem) return
 
-  if (info.battery) {
-    const go = window.confirm(
-      "检测到 iQOO/vivo 省电限制，后台任务通知可能失效。现在打开电池优化设置并允许 OpenCode 后台运行吗？",
-    )
-    if (go) void openPowerSettings()
-  }
+  if (!info.battery) return
 
-  const start = window.confirm("为保证后台通知可靠，请开启 OpenCode 自启动权限。现在打开自启动管理吗？")
-  if (start) void openAutoStartSettings()
+  const go = window.confirm(
+    "检测到 iQOO/vivo 省电限制，后台任务通知可能失效。现在打开电池优化设置并允许 OpenCode 后台运行吗？",
+  )
+  if (go) void openPowerSettings()
   mark()
 })
 

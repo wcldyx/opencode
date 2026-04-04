@@ -150,6 +150,7 @@ export const SettingsGeneral: Component = () => {
   const soundOptions = [noneSound, ...SOUND_OPTIONS]
   const mono = () => monoInput(settings.appearance.font())
   const sans = () => sansInput(settings.appearance.uiFont())
+  const [bg] = createResource(() => (platform.platform === "mobile" ? platform.backgroundStatus?.() : undefined))
 
   const soundSelectProps = (
     enabled: () => boolean,
@@ -391,6 +392,42 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
+  const MobileSection = () => (
+    <div class="flex flex-col gap-1">
+      <h3 class="text-14-medium text-text-strong pb-2">后台保活</h3>
+
+      <SettingsList>
+        <SettingsRow
+          title="国产机后台保护"
+          description="iQOO / vivo 等设备可能限制后台通知。可以在这里快速打开系统设置。"
+        >
+          <div class="flex flex-wrap justify-end gap-2">
+            <Button size="small" variant="secondary" onClick={() => void platform.openNotificationSettings?.()}>
+              通知设置
+            </Button>
+            <Button size="small" variant="secondary" onClick={() => void platform.openPowerSettings?.()}>
+              电池优化
+            </Button>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow title="当前设备" description="用于判断是否需要额外的后台保护配置。">
+          <div class="text-12-regular text-text-weak text-right">
+            <Show when={bg()} fallback={<span>未检测到设备信息</span>}>
+              {(x) => (
+                <div class="flex flex-col gap-0.5">
+                  <span>{x().maker}</span>
+                  <span>{x().model}</span>
+                  <span>{x().battery ? "电池优化未放行" : "电池优化已放行"}</span>
+                </div>
+              )}
+            </Show>
+          </div>
+        </SettingsRow>
+      </SettingsList>
+    </div>
+  )
+
   const SoundsSection = () => (
     <div class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.sounds")}</h3>
@@ -502,6 +539,8 @@ export const SettingsGeneral: Component = () => {
         <AppearanceSection />
 
         <NotificationsSection />
+
+        {platform.platform === "mobile" ? <MobileSection /> : null}
 
         <SoundsSection />
 

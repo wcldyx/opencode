@@ -43,6 +43,15 @@ export type Platform = {
   /** Play a lightweight foreground haptic cue (mobile only) */
   pulse?(type?: "task" | "alert"): Promise<void>
 
+  /** Open the system notification settings (mobile only) */
+  openNotificationSettings?(): Promise<void>
+
+  /** Open battery optimization settings (mobile only) */
+  openPowerSettings?(): Promise<void>
+
+  /** Inspect OEM background status (mobile only) */
+  backgroundStatus?(): Promise<{ maker: string; model: string; battery: boolean }>
+
   /** Open directory picker dialog (native on Tauri, server-backed on web) */
   openDirectoryPickerDialog?(opts?: OpenDirectoryPickerOptions): Promise<PickerPaths>
 
