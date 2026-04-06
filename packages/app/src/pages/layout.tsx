@@ -217,9 +217,13 @@ export default function Layout(props: ParentProps) {
       reset()
     }
     const back = (e: Event) => {
+      const dialogs = document.querySelectorAll("[data-component='dialog-overlay']").length
+      if (dialogs > 0) return
+      if (e.defaultPrevented) return
       if (!layout.mobileSidebar.opened()) return
       layout.mobileSidebar.hide()
       e.preventDefault()
+      e.stopPropagation()
     }
     makeEventListener(window, "pointerup", stop)
     makeEventListener(window, "pointercancel", stop)

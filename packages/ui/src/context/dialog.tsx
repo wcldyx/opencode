@@ -28,64 +28,53 @@ type Active = {
 const Context = createContext<ReturnType<typeof init>>()
 
 function init() {
-  const [active, setActive] = createSignal<Active | undefined>()
-  const timer = { current: undefined as ReturnType<typeof setTimeout> | undefined }
-  const lock = { value: false }
+  const [stack, setStack] = createSignal<Active[]>([])
+  const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
   onCleanup(() => {
-    if (timer.current === undefined) return
-    clearTimeout(timer.current)
-    timer.current = undefined
+    for (const timer of timers.values()) clearTimeout(timer)
+    timers.clear()
   })
 
   const close = () => {
-    const current = active()
-    if (!current || lock.value) return
-    lock.value = true
-    current.onClose?.()
-    current.setClosing(true)
+    const cur = stack().at(-1)
+    if (!cur) return
+    if (timers.has(cur.id)) return
+    cur.onClose?.()
+    cur.setClosing(true)
 
-    const id = current.id
-    if (timer.current !== undefined) {
-      clearTimeout(timer.current)
-      timer.current = undefined
-    }
-
-    timer.current = setTimeout(() => {
-      timer.current = undefined
-      current.dispose()
-      if (active()?.id === id) setActive(undefined)
-      lock.value = false
+    const id = cur.id
+    const timer = setTimeout(() => {
+      timers.delete(id)
+      cur.dispose()
+      setStack((list) => list.filter((item) => item.id !== id))
     }, 100)
+    timers.set(id, timer)
   }
 
   createEffect(() => {
-    if (!active()) return
+    if (stack().length === 0) return
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       close()
       event.preventDefault()
       event.stopPropagation()
+      event.stopImmediatePropagation()
+    }
+
+    const onBack = (event: Event) => {
+      close()
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation()
     }
 
     makeEventListener(window, "keydown", onKeyDown, { capture: true })
+    makeEventListener(window, "opencode:back", onBack, { capture: true })
   })
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
-    // Immediately dispose any existing dialog when showing a new one
-    const current = active()
-    if (current) {
-      current.dispose()
-      setActive(undefined)
-    }
-
-    if (timer.current !== undefined) {
-      clearTimeout(timer.current)
-      timer.current = undefined
-    }
-    lock.value = false
-
     const id = Math.random().toString(36).slice(2)
     let dispose: (() => void) | undefined
     let setClosing: ((closing: boolean) => void) | undefined
@@ -114,13 +103,18 @@ function init() {
     )
 
     if (!dispose || !setClosing) return
+    const d = dispose
+    const set = setClosing
 
-    setActive({ id, node, dispose, owner, onClose, setClosing })
+    setStack((list) => [...list, { id, node, dispose: d, owner, onClose, setClosing: set }])
   }
 
   return {
+    get stack() {
+      return stack()
+    },
     get active() {
-      return active()
+      return stack().at(-1)
     },
     close,
     show,
@@ -132,7 +126,7 @@ export function DialogProvider(props: ParentProps) {
   return (
     <Context.Provider value={ctx}>
       {props.children}
-      <div data-component="dialog-stack">{ctx.active?.node}</div>
+      <div data-component="dialog-stack">{ctx.stack.map((item) => item.node)}</div>
     </Context.Provider>
   )
 }
