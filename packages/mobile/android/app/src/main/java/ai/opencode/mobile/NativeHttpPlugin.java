@@ -33,6 +33,7 @@ public class NativeHttpPlugin extends Plugin {
     new Thread(
       () -> {
         HttpURLConnection conn = null;
+        boolean settled = false;
         try {
           conn = open(call);
           active.put(id, conn);
@@ -41,6 +42,7 @@ public class NativeHttpPlugin extends Plugin {
           meta.put("status", conn.getResponseCode());
           meta.put("headers", headers(conn));
           call.resolve(meta);
+          settled = true;
 
           BufferedInputStream src =
             new BufferedInputStream(conn.getResponseCode() >= 400 ? (conn.getErrorStream() != null ? conn.getErrorStream() : conn.getInputStream()) : conn.getInputStream());
@@ -64,7 +66,7 @@ public class NativeHttpPlugin extends Plugin {
           fail.put("id", id);
           fail.put("message", err.getMessage() == null ? "native stream failed" : err.getMessage());
           notifyListeners("nativeHttpError", fail);
-          call.reject(err.getMessage(), err);
+          if (!settled) call.reject(err.getMessage(), err);
         } finally {
           HttpURLConnection item = active.remove(id);
           if (item != null) item.disconnect();

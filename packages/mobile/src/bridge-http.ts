@@ -81,13 +81,18 @@ export async function nativeFetch(input: RequestInfo | URL, init?: RequestInit) 
 
     req.signal.addEventListener("abort", abort, { once: true })
 
-    const meta = await nativeHttp.stream({
-      id,
-      url: req.url,
-      method: req.method,
-      headers: Object.fromEntries(req.headers.entries()),
-      body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.clone().text(),
-    })
+    const meta = await nativeHttp
+      .stream({
+        id,
+        url: req.url,
+        method: req.method,
+        headers: Object.fromEntries(req.headers.entries()),
+        body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.clone().text(),
+      })
+      .catch(async (e) => {
+        await off()
+        throw e
+      })
 
     const headers = new Headers()
     Object.entries(meta.headers ?? {}).forEach(([key, value]) => {

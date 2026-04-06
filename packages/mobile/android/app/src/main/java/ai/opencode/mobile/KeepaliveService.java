@@ -169,7 +169,13 @@ public class KeepaliveService extends Service {
     try {
       AlarmManager mgr = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
       if (mgr == null) return;
-      mgr.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 1000, pending());
+      long at = SystemClock.elapsedRealtime() + 1000;
+      PendingIntent item = pending();
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !mgr.canScheduleExactAlarms()) {
+        mgr.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, item);
+        return;
+      }
+      mgr.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, item);
     } catch (Exception err) {
       Log.e(TAG, "restart failed", err);
     }

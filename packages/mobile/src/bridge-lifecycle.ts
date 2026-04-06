@@ -48,6 +48,7 @@ export function back() {
     window.history.back()
     return
   }
+  if (!Capacitor.isNativePlatform()) return
   void App.exitApp()
 }
 
