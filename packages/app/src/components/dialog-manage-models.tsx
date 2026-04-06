@@ -8,12 +8,14 @@ import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { usePlatform } from "@/context/platform"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
   const language = useLanguage()
   const dialog = useDialog()
+  const platform = usePlatform()
 
   const handleConnectProvider = () => {
     dialog.show(() => <DialogSelectProvider />)
@@ -39,7 +41,10 @@ export const DialogManageModels: Component = () => {
       }
     >
       <List
-        search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true }}
+        search={{
+          placeholder: language.t("dialog.model.search.placeholder"),
+          autofocus: platform.platform !== "mobile",
+        }}
         emptyMessage={language.t("dialog.model.empty")}
         key={(x) => `${x?.provider?.id}:${x?.id}`}
         items={local.model.list()}

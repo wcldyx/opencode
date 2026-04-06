@@ -14,6 +14,7 @@ import { Terminal } from "@/components/terminal"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
+import { usePlatform } from "@/context/platform"
 import { useTerminal } from "@/context/terminal"
 import { terminalTabLabel } from "@/pages/session/terminal-label"
 import { createSizing, focusTerminalById } from "@/pages/session/helpers"
@@ -26,6 +27,7 @@ export function TerminalPanel() {
   const layout = useLayout()
   const terminal = useTerminal()
   const language = useLanguage()
+  const platform = usePlatform()
   const command = useCommand()
   const { params, view } = useSessionLayout()
 
@@ -285,7 +287,7 @@ export function TerminalPanel() {
                           <div id={`terminal-wrapper-${id}`} class="absolute inset-0">
                             <Terminal
                               pty={pty()}
-                              autoFocus={opened()}
+                              autoFocus={platform.platform !== "mobile" && opened()}
                               onConnect={() => ops.trim(id)}
                               onCleanup={ops.update}
                               onConnectError={() => ops.clone(id)}

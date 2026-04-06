@@ -8,6 +8,7 @@ import { List } from "@opencode-ai/ui/list"
 import { Switch } from "@opencode-ai/ui/switch"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 
 const statusLabels = {
   connected: "mcp.status.connected",
@@ -20,6 +21,7 @@ export const DialogSelectMcp: Component = () => {
   const sync = useSync()
   const sdk = useSDK()
   const language = useLanguage()
+  const platform = usePlatform()
   const [state, setState] = createStore({
     done: false,
     loading: false,
@@ -92,7 +94,7 @@ export const DialogSelectMcp: Component = () => {
       description={language.t("dialog.mcp.description", { enabled: enabledCount(), total: totalCount() })}
     >
       <List
-        search={{ placeholder: language.t("common.search.placeholder"), autofocus: true }}
+        search={{ placeholder: language.t("common.search.placeholder"), autofocus: platform.platform !== "mobile" }}
         emptyMessage={language.t("dialog.mcp.empty")}
         key={(x) => x?.name ?? ""}
         items={items}

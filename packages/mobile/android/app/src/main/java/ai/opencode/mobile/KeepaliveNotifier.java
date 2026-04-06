@@ -4,21 +4,22 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.media.MediaPlayer;
 import android.net.Uri;
-import android.media.Ringtone;
-import android.media.RingtoneManager;
 import android.os.Build;
-import android.util.Log;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 
 import androidx.core.app.NotificationCompat;
 
 final class KeepaliveNotifier {
-  private static final String TAG = "KeepaliveNotifier";
   static final String KEEPALIVE_CHANNEL = "opencode-keepalive";
   static final String TASK_CHANNEL = "opencode-task-v2";
-  static final long[] TASK_VIBRATE = new long[] { 0, 320, 160, 380 };
+  static final long[] TASK_VIBRATE = new long[] { 0, 420 };
 
   private final KeepaliveService svc;
 
@@ -46,12 +47,8 @@ final class KeepaliveNotifier {
       NotificationManager.IMPORTANCE_HIGH
     );
     done.setDescription("任务完成提醒");
-    done.enableVibration(true);
-    done.setVibrationPattern(TASK_VIBRATE);
-    done.setSound(
-      sound(),
-      new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
-    );
+    done.enableVibration(false);
+    done.setSound(null, null);
     manager.createNotificationChannel(done);
   }
 
@@ -77,7 +74,9 @@ final class KeepaliveNotifier {
   }
 
   void done(String sessionID, String href, String body) {
-    ring(sessionID);
+    ensure();
+    ring();
+    vibrate();
     Intent launch = svc.getPackageManager().getLaunchIntentForPackage(svc.getPackageName());
     if (launch == null) launch = new Intent(svc, MainActivity.class);
     launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -98,8 +97,7 @@ final class KeepaliveNotifier {
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-      .setDefaults(NotificationCompat.DEFAULT_ALL)
-      .setVibrate(TASK_VIBRATE)
+      .setSilent(true)
       .setContentIntent(pending)
       .build();
 
@@ -108,29 +106,54 @@ final class KeepaliveNotifier {
     manager.notify(sessionID.hashCode(), item);
   }
 
-  private void ring(String sessionID) {
+  private Uri sound() {
+    return Uri.parse("android.resource://" + svc.getPackageName() + "/raw/" + resourceName());
+  }
+
+  private void ring() {
     try {
-      Ringtone item = RingtoneManager.getRingtone(svc, sound());
-      if (item == null) return;
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        item.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build());
-      }
-      item.play();
-    } catch (Exception err) {
-      Log.d(TAG, "done sessionID=" + sessionID + " ringtone-failed", err);
+      MediaPlayer item = new MediaPlayer();
+      item.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build());
+      item.setDataSource(svc, sound());
+      item.setOnPreparedListener(MediaPlayer::start);
+      item.setOnCompletionListener(MediaPlayer::release);
+      item.setOnErrorListener((player, what, extra) -> {
+        player.release();
+        return true;
+      });
+      item.prepareAsync();
+    } catch (Exception ignored) {
     }
   }
 
-  private Uri sound() {
-    int id = resource();
-    return Uri.parse("android.resource://" + svc.getPackageName() + "/" + id);
+  private void vibrate() {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        VibratorManager mgr = (VibratorManager) svc.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+        if (mgr == null) return;
+        Vibrator item = mgr.getDefaultVibrator();
+        if (!item.hasVibrator()) return;
+        item.vibrate(VibrationEffect.createWaveform(TASK_VIBRATE, -1));
+        return;
+      }
+
+      Vibrator item = (Vibrator) svc.getSystemService(Context.VIBRATOR_SERVICE);
+      if (item == null || !item.hasVibrator()) return;
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        item.vibrate(VibrationEffect.createWaveform(TASK_VIBRATE, -1));
+        return;
+      }
+      item.vibrate(TASK_VIBRATE, -1);
+    } catch (Exception ignored) {
+    }
   }
 
-  private int resource() {
+  private String resourceName() {
     String name = KeepaliveState.sound();
-    if (name == null || name.isEmpty()) return R.raw.staplebops_01;
-    int id = svc.getResources().getIdentifier(name.replace('-', '_'), "raw", svc.getPackageName());
-    if (id != 0) return id;
-    return R.raw.staplebops_01;
+    if (name == null || name.isEmpty()) return "staplebops_01";
+    String file = name.replace('-', '_');
+    int id = svc.getResources().getIdentifier(file, "raw", svc.getPackageName());
+    if (id != 0) return file;
+    return "staplebops_01";
   }
 }

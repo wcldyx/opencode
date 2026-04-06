@@ -12,6 +12,7 @@ import { type LocalProject, getAvatarColors } from "@/context/layout"
 import { getFilename } from "@opencode-ai/util/path"
 import { Avatar } from "@opencode-ai/ui/avatar"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 
@@ -20,6 +21,7 @@ export function DialogEditProject(props: { project: LocalProject }) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const language = useLanguage()
+  const platform = usePlatform()
 
   const folderName = createMemo(() => getFilename(props.project.worktree))
   const defaultName = createMemo(() => props.project.name || folderName())
@@ -109,7 +111,7 @@ export function DialogEditProject(props: { project: LocalProject }) {
       <form onSubmit={handleSubmit} class="flex flex-col gap-6 p-6 pt-0">
         <div class="flex flex-col gap-4">
           <TextField
-            autofocus
+            autofocus={platform.platform !== "mobile"}
             type="text"
             label={language.t("dialog.project.edit.name")}
             placeholder={folderName()}

@@ -7,6 +7,7 @@ import { Tag } from "@opencode-ai/ui/tag"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { DialogCustomProvider } from "./dialog-custom-provider"
 
 const CUSTOM_ID = "_custom"
@@ -15,6 +16,7 @@ export const DialogSelectProvider: Component = () => {
   const dialog = useDialog()
   const providers = useProviders()
   const language = useLanguage()
+  const platform = usePlatform()
 
   const popularGroup = () => language.t("dialog.provider.group.popular")
   const otherGroup = () => language.t("dialog.provider.group.other")
@@ -29,7 +31,10 @@ export const DialogSelectProvider: Component = () => {
   return (
     <Dialog title={language.t("command.provider.connect")} transition>
       <List
-        search={{ placeholder: language.t("dialog.provider.search.placeholder"), autofocus: true }}
+        search={{
+          placeholder: language.t("dialog.provider.search.placeholder"),
+          autofocus: platform.platform !== "mobile",
+        }}
         emptyMessage={language.t("dialog.provider.empty")}
         activeIcon="plus-small"
         key={(x) => x?.id}

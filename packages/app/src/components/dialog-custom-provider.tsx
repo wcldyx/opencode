@@ -12,6 +12,7 @@ import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { type FormState, headerRow, modelRow, validateCustomProvider } from "./dialog-custom-provider-form"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
@@ -24,6 +25,7 @@ export function DialogCustomProvider(props: Props) {
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const language = useLanguage()
+  const platform = usePlatform()
 
   const [form, setForm] = createStore<FormState>({
     providerID: "",
@@ -191,7 +193,7 @@ export function DialogCustomProvider(props: Props) {
 
           <div class="flex flex-col gap-4">
             <TextField
-              autofocus
+              autofocus={platform.platform !== "mobile"}
               label={language.t("provider.custom.field.providerID.label")}
               placeholder={language.t("provider.custom.field.providerID.placeholder")}
               description={language.t("provider.custom.field.providerID.description")}

@@ -14,6 +14,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { decode64 } from "@/utils/base64"
@@ -263,6 +264,7 @@ function createSessionEntries(props: {
 export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFile?: (path: string) => void }) {
   const command = useCommand()
   const language = useLanguage()
+  const platform = usePlatform()
   const layout = useLayout()
   const file = useFile()
   const dialog = useDialog()
@@ -389,7 +391,7 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
           placeholder: filesOnly()
             ? language.t("session.header.searchFiles")
             : language.t("palette.search.placeholder"),
-          autofocus: true,
+          autofocus: platform.platform !== "mobile",
           hideIcon: true,
         }}
         emptyMessage={language.t("palette.empty")}

@@ -10,6 +10,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 
 interface DialogSelectDirectoryProps {
   title?: string
@@ -251,6 +252,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const layout = useLayout()
   const dialog = useDialog()
   const language = useLanguage()
+  const platform = usePlatform()
 
   const [filter, setFilter] = createSignal("")
   let list: ListRef | undefined
@@ -324,7 +326,10 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   return (
     <Dialog title={props.title ?? language.t("command.project.open")}>
       <List
-        search={{ placeholder: language.t("dialog.directory.search.placeholder"), autofocus: true }}
+        search={{
+          placeholder: language.t("dialog.directory.search.placeholder"),
+          autofocus: platform.platform !== "mobile",
+        }}
         emptyMessage={language.t("dialog.directory.empty")}
         loadingMessage={language.t("common.loading")}
         items={items}

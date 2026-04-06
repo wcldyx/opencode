@@ -15,6 +15,7 @@ import { Link } from "@/components/link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useProviders } from "@/hooks/use-providers"
 
 export function DialogConnectProvider(props: { provider: string }) {
@@ -22,6 +23,7 @@ export function DialogConnectProvider(props: { provider: string }) {
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const language = useLanguage()
+  const platform = usePlatform()
   const providers = useProviders()
 
   const all = () => {
@@ -443,7 +445,7 @@ export function DialogConnectProvider(props: { provider: string }) {
         </Switch>
         <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
           <TextField
-            autofocus
+            autofocus={platform.platform !== "mobile"}
             type="text"
             label={language.t("provider.connect.apiKey.label", { provider: provider().name })}
             placeholder={language.t("provider.connect.apiKey.placeholder")}
@@ -504,7 +506,7 @@ export function DialogConnectProvider(props: { provider: string }) {
         </div>
         <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
           <TextField
-            autofocus
+            autofocus={platform.platform !== "mobile"}
             type="text"
             label={language.t("provider.connect.oauth.code.label", { method: method()?.label ?? "" })}
             placeholder={language.t("provider.connect.oauth.code.placeholder")}
@@ -600,7 +602,7 @@ export function DialogConnectProvider(props: { provider: string }) {
           </div>
         </div>
         <div class="px-2.5 pb-10 flex flex-col gap-6">
-          <div onKeyDown={handleKey} tabIndex={0} autofocus={store.methodIndex === undefined ? true : undefined}>
+          <div onKeyDown={handleKey} tabIndex={0}>
             <Switch>
               <Match when={loading()}>
                 <div class="text-14-regular text-text-base">

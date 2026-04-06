@@ -108,6 +108,7 @@ function useServerPreview() {
 
 function ServerForm(props: ServerFormProps) {
   const language = useLanguage()
+  const platform = usePlatform()
   const keyDown = (event: KeyboardEvent) => {
     event.stopPropagation()
     if (event.key === "Escape") {
@@ -129,7 +130,7 @@ function ServerForm(props: ServerFormProps) {
             label={language.t("dialog.server.add.url")}
             placeholder={props.placeholder}
             value={props.value}
-            autofocus
+            autofocus={platform.platform !== "mobile"}
             validationState={props.error ? "invalid" : "valid"}
             error={props.error}
             disabled={props.busy}
