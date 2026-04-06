@@ -1,11 +1,14 @@
+import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { List } from "@opencode-ai/ui/list"
 import type { ListRef } from "@opencode-ai/ui/list"
+import { TextField } from "@opencode-ai/ui/text-field"
+import { showToast } from "@opencode-ai/ui/toast"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
 import fuzzysort from "fuzzysort"
-import { createMemo, createResource, createSignal } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
@@ -24,6 +27,8 @@ type Row = {
   group: "recent" | "folders"
 }
 
+const drives = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i) + ":/")
+
 function cleanInput(value: string) {
   const first = (value ?? "").split(/\r?\n/)[0] ?? ""
   return first.replace(/[\u0000-\u001F\u007F]/g, "").trim()
@@ -37,8 +42,14 @@ function normalizePath(input: string) {
 
 function normalizeDriveRoot(input: string) {
   const v = normalizePath(input)
+  if (/^\/[A-Za-z]:\/?$/.test(v)) return v.slice(1).replace(/\/?$/, "/")
   if (/^[A-Za-z]:$/.test(v)) return v + "/"
   return v
+}
+
+function windowsPath(input: string) {
+  const v = normalizeDriveRoot(input)
+  return /^[A-Za-z]:\//.test(v) || v.startsWith("//")
 }
 
 function trimTrailing(input: string) {
@@ -78,6 +89,42 @@ function parentOf(input: string) {
   return v.slice(0, i)
 }
 
+function crumb(input: string) {
+  const v = trimTrailing(input)
+  if (!v) return [] as Array<{ name: string; path: string }>
+  if (v === "/" || v === "//") return [{ name: v, path: v }]
+  if (/^[A-Za-z]:\/$/.test(v)) return [{ name: v, path: v }]
+
+  if (/^[A-Za-z]:\//.test(v)) {
+    const root = v.slice(0, 3)
+    const rest = v.slice(3).split("/").filter(Boolean)
+    const out = [{ name: root, path: root }]
+    let cur = root
+    for (const part of rest) {
+      cur = joinPath(cur, part)
+      out.push({ name: part, path: cur })
+    }
+    return out
+  }
+
+  const parts = v.replace(/^\//, "").split("/").filter(Boolean)
+  if (v.startsWith("/")) {
+    const out = [{ name: "/", path: "/" }]
+    let cur = ""
+    for (const part of parts) {
+      cur = joinPath(cur, part)
+      out.push({ name: part, path: cur })
+    }
+    return out
+  }
+
+  let cur = ""
+  return parts.map((part) => {
+    cur = joinPath(cur, part)
+    return { name: part, path: cur }
+  })
+}
+
 function modeOf(input: string) {
   const raw = normalizeDriveRoot(input.trim())
   if (!raw) return "relative" as const
@@ -101,6 +148,7 @@ function tildeOf(absolute: string, home: string) {
 function displayPath(path: string, input: string, home: string) {
   const full = trimTrailing(path)
   if (modeOf(input) === "absolute") return full
+  if (windowsPath(full) && !input.trim().startsWith("~")) return full
   return tildeOf(full, home) || full
 }
 
@@ -134,7 +182,10 @@ function useDirectorySearch(args: {
   home: () => string
 }) {
   const cache = new Map<string, Promise<Array<{ name: string; absolute: string }>>>()
+  let roots: Promise<string[]> | undefined
   let current = 0
+
+  const windows = () => windowsPath(args.home()) || windowsPath(args.start() ?? "")
 
   const scoped = (value: string) => {
     const base = args.start()
@@ -174,6 +225,25 @@ function useDirectorySearch(args: {
     return request
   }
 
+  const listRoots = async () => {
+    if (!windows()) return [] as string[]
+    if (roots) return roots
+
+    roots = Promise.all(
+      drives.map(async (dir) => {
+        const rows = await args.sdk.client.file
+          .list({ directory: dir, path: "" })
+          .then((x) => x.data ?? [])
+          .catch(() => [])
+        const ok = rows.some((row) => normalizeDriveRoot(row.absolute).toLowerCase().startsWith(dir.toLowerCase()))
+        if (!ok) return
+        return trimTrailing(dir)
+      }),
+    ).then((items) => items.filter((x): x is string => Boolean(x)))
+
+    return roots
+  }
+
   const match = async (dir: string, query: string, limit: number) => {
     const items = await dirs(dir)
     if (!query) return items.slice(0, limit).map((x) => x.absolute)
@@ -185,6 +255,8 @@ function useDirectorySearch(args: {
     const active = () => token === current
 
     const value = cleanInput(filter)
+    if (!value && windows()) return listRoots()
+
     const scopedInput = scoped(value)
     if (!scopedInput) return [] as string[]
 
@@ -255,6 +327,12 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const platform = usePlatform()
 
   const [filter, setFilter] = createSignal("")
+  const [focus, setFocus] = createSignal("")
+  const [cwd, setCwd] = createSignal("")
+  const [roots, setRoots] = createSignal(false)
+  const [edit, setEdit] = createSignal<"" | "new" | "rename">("")
+  const [draft, setDraft] = createSignal("")
+  const [base, setBase] = createSignal("")
   let list: ListRef | undefined
 
   const missingBase = createMemo(() => !(sync.data.path.home || sync.data.path.directory))
@@ -278,6 +356,15 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     sdk,
     home,
     start,
+  })
+  const canOpen = createMemo(() => Boolean(trimTrailing(cwd())) && !edit())
+
+  createEffect(() => {
+    const next = start()
+    if (!next) return
+    if (roots()) return
+    if (cwd()) return
+    setCwd(trimTrailing(next))
   })
 
   const recentProjects = createMemo(() => {
@@ -315,7 +402,9 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const items = async (value: string) => {
     const results = await directories(value)
     const directoryRows = results.map((absolute) => toRow(absolute, home(), "folders"))
-    return uniqueRows([...recentProjects(), ...directoryRows])
+    const showRecent = !cleanInput(value) && (roots() || !cwd())
+    const recent = showRecent ? recentProjects() : []
+    return uniqueRows([...recent, ...directoryRows])
   }
 
   function resolve(absolute: string) {
@@ -323,75 +412,313 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     dialog.close()
   }
 
+  const openFolder = async () => {
+    const target = trimTrailing(cwd())
+    if (!target) return
+    resolve(target)
+  }
+
+  const go = (absolute: string) => {
+    setRoots(false)
+    const next = trimTrailing(absolute)
+    setFocus(next)
+    setCwd(next)
+    const text = displayPath(next, filter(), home())
+    list?.setFilter(text.endsWith("/") ? text : text + "/")
+  }
+
+  const target = () => {
+    const cur = trimTrailing(cwd())
+    const hit = trimTrailing(focus())
+    if (!cur) return ""
+    if (!hit) return cur
+    if (hit === cur) return hit
+    const prefix = cur.endsWith("/") ? cur : cur + "/"
+    if (hit.startsWith(prefix)) return hit
+    return cur
+  }
+
+  const up = () => {
+    const target = trimTrailing(cwd())
+    if (!target) return
+    if (/^[A-Za-z]:\/$/.test(normalizeDriveRoot(target))) {
+      setRoots(true)
+      setFocus("")
+      setCwd("")
+      list?.setFilter("")
+      return
+    }
+    const next = parentOf(target)
+    if (next === target) return
+    go(next)
+  }
+
+  const act = async (task: () => Promise<void>) => {
+    await task().catch((err) => {
+      showToast({
+        variant: "error",
+        title: language.t("common.requestFailed"),
+        description: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
+
+  const add = () => {
+    const dir = trimTrailing(cwd())
+    if (!dir) return
+    setBase(dir)
+    setDraft("")
+    setEdit("new")
+  }
+
+  const rename = () => {
+    const item = target()
+    if (!item) return
+    if (/^[A-Za-z]:\/$/.test(normalizeDriveRoot(item)) || item === "/" || item === "//") return
+    setBase(item)
+    setDraft(getFilename(item))
+    setEdit("rename")
+  }
+
+  const save = () =>
+    act(async () => {
+      const name = draft().trim()
+      if (!name) {
+        setEdit("")
+        return
+      }
+      if (name.includes("/") || name.includes("\\")) throw new Error(language.t("dialog.directory.error.invalidName"))
+
+      if (edit() === "new") {
+        const dir = trimTrailing(base() || cwd())
+        if (!dir) return
+        await sdk.client.file.mkdir({ directory: dir, path: name })
+        setEdit("")
+        go(joinPath(dir, name))
+        return
+      }
+
+      if (edit() === "rename") {
+        const item = trimTrailing(base() || target())
+        if (!item) return
+        const parent = parentOf(item)
+        const old = getFilename(item)
+        if (name === old) {
+          setEdit("")
+          return
+        }
+        await sdk.client.file.rename({ directory: parent, from: old, to: name })
+        setEdit("")
+        go(joinPath(parent, name))
+      }
+    })
+
+  const remove = () =>
+    act(async () => {
+      const item = target()
+      if (!item) return
+      if (/^[A-Za-z]:\/$/.test(normalizeDriveRoot(item)) || item === "/" || item === "//") return
+      const name = getFilename(item)
+      if (!window.confirm(language.t("dialog.directory.confirm.delete", { name }))) return
+      const parent = parentOf(item)
+      await sdk.client.file.rmdir({ directory: parent, path: name })
+      go(parent)
+    })
+
   return (
     <Dialog title={props.title ?? language.t("command.project.open")}>
-      <List
-        search={{
-          placeholder: language.t("dialog.directory.search.placeholder"),
-          autofocus: platform.platform !== "mobile",
-        }}
-        emptyMessage={language.t("dialog.directory.empty")}
-        loadingMessage={language.t("common.loading")}
-        items={items}
-        key={(x) => x.absolute}
-        filterKeys={["search"]}
-        groupBy={(item) => item.group}
-        sortGroupsBy={(a, b) => {
-          if (a.category === b.category) return 0
-          return a.category === "recent" ? -1 : 1
-        }}
-        groupHeader={(group) =>
-          group.category === "recent" ? language.t("home.recentProjects") : language.t("command.project.open")
-        }
-        ref={(r) => (list = r)}
-        onFilter={(value) => setFilter(cleanInput(value))}
-        onKeyEvent={(e, item) => {
-          if (e.key !== "Tab") return
-          if (e.shiftKey) return
-          if (!item) return
+      <div class="h-full min-h-0 flex flex-col gap-3">
+        <div class="flex items-center gap-2 px-1">
+          <Button size="small" variant="ghost" onClick={up} disabled={roots() || !cwd()}>
+            {language.t("dialog.directory.action.up")}
+          </Button>
+          <Button size="small" variant="ghost" onClick={add} disabled={!cwd() || !!edit()}>
+            {language.t("dialog.directory.action.newFolder")}
+          </Button>
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={rename}
+            disabled={
+              !cwd() ||
+              !!edit() ||
+              /^[A-Za-z]:\/$/.test(normalizeDriveRoot(cwd())) ||
+              trimTrailing(cwd()) === "/" ||
+              trimTrailing(cwd()) === "//"
+            }
+          >
+            {language.t("common.rename")}
+          </Button>
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={remove}
+            disabled={
+              !cwd() ||
+              !!edit() ||
+              /^[A-Za-z]:\/$/.test(normalizeDriveRoot(cwd())) ||
+              trimTrailing(cwd()) === "/" ||
+              trimTrailing(cwd()) === "//"
+            }
+          >
+            {language.t("common.delete")}
+          </Button>
+          <Show when={roots()}>
+            <div class="ml-auto text-12-regular text-text-weak truncate">{language.t("dialog.directory.roots")}</div>
+          </Show>
+        </div>
+        <Show when={!roots() && !!cwd()}>
+          <div class="px-1 -mt-1 flex items-center gap-1 overflow-x-auto whitespace-nowrap">
+            <For each={crumb(cwd())}>
+              {(item) => (
+                <button
+                  type="button"
+                  class="text-12-regular text-text-weak hover:text-text-strong transition-colors"
+                  onClick={() => go(item.path)}
+                >
+                  {item.name}
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+        <Show when={!!edit()}>
+          <div
+            class="absolute inset-0 z-20 flex items-center justify-center bg-black/30 px-4"
+            onClick={() => setEdit("")}
+          >
+            <form
+              class="w-full max-w-[460px] rounded-xl border border-border-weak-base bg-surface-raised-stronger-non-alpha shadow-xl p-4 flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void save()
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div class="text-14-medium text-text-strong">
+                {edit() === "new" ? language.t("dialog.directory.action.newFolder") : language.t("common.rename")}
+              </div>
+              <TextField
+                autofocus
+                value={draft()}
+                onChange={setDraft}
+                placeholder={
+                  edit() === "new" ? language.t("dialog.directory.prompt.newFolder") : language.t("common.rename")
+                }
+              />
+              <div class="flex justify-end gap-2">
+                <Button size="small" variant="secondary" type="button" onClick={() => setEdit("")}>
+                  {language.t("common.cancel")}
+                </Button>
+                <Button size="small" type="submit">
+                  {language.t("common.save")}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </Show>
+        <List
+          class="flex-1 min-h-0"
+          search={{
+            placeholder: language.t("dialog.directory.search.placeholder"),
+            autofocus: platform.platform !== "mobile",
+          }}
+          emptyMessage={language.t("dialog.directory.empty")}
+          loadingMessage={language.t("common.loading")}
+          items={items}
+          key={(x) => x.absolute}
+          filterKeys={["search"]}
+          groupBy={(item) => item.group}
+          sortGroupsBy={(a, b) => {
+            if (a.category === b.category) return 0
+            return a.category === "recent" ? -1 : 1
+          }}
+          groupHeader={(group) =>
+            group.category === "recent" ? language.t("home.recentProjects") : language.t("command.project.open")
+          }
+          ref={(r) => (list = r)}
+          onFilter={(value) => setFilter(cleanInput(value))}
+          onMove={(item) => setFocus(item?.absolute ?? "")}
+          onKeyEvent={(e, item) => {
+            if (e.key === "Backspace" && !cleanInput(filter())) {
+              e.preventDefault()
+              up()
+              return
+            }
+            if (e.key !== "Tab") return
+            if (e.shiftKey) return
+            if (!item) return
 
-          e.preventDefault()
-          e.stopPropagation()
+            e.preventDefault()
+            e.stopPropagation()
 
-          const value = displayPath(item.absolute, filter(), home())
-          list?.setFilter(value.endsWith("/") ? value : value + "/")
-        }}
-        onSelect={(path) => {
-          if (!path) return
-          resolve(path.absolute)
-        }}
-      >
-        {(item) => {
-          const path = displayPath(item.absolute, filter(), home())
-          if (path === "~") {
+            const value = displayPath(item.absolute, filter(), home())
+            list?.setFilter(value.endsWith("/") ? value : value + "/")
+          }}
+          onSelect={(path) => {
+            if (!path) return
+            setFocus(path.absolute)
+            if (path.group === "folders") {
+              go(path.absolute)
+              return
+            }
+            resolve(path.absolute)
+          }}
+        >
+          {(item) => {
+            const path = displayPath(item.absolute, filter(), home())
+            if (path === "~") {
+              return (
+                <div class="w-full flex items-center justify-between rounded-md">
+                  <div class="flex items-center gap-x-3 grow min-w-0">
+                    <FileIcon node={{ path: item.absolute, type: "directory" }} class="shrink-0 size-4" />
+                    <div class="flex items-center text-14-regular min-w-0">
+                      <span class="text-text-strong whitespace-nowrap">~</span>
+                      <span class="text-text-weak whitespace-nowrap">/</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+            if (/^[A-Za-z]:$/.test(path) || /^\/[A-Za-z]:$/.test(path)) {
+              const root = path.startsWith("/") ? path.slice(1) : path
+              return (
+                <div class="w-full flex items-center justify-between rounded-md">
+                  <div class="flex items-center gap-x-3 grow min-w-0">
+                    <FileIcon node={{ path: item.absolute, type: "directory" }} class="shrink-0 size-4" />
+                    <div class="flex items-center text-14-regular min-w-0">
+                      <span class="text-text-strong whitespace-nowrap">{root}</span>
+                      <span class="text-text-weak whitespace-nowrap">/</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
             return (
               <div class="w-full flex items-center justify-between rounded-md">
                 <div class="flex items-center gap-x-3 grow min-w-0">
                   <FileIcon node={{ path: item.absolute, type: "directory" }} class="shrink-0 size-4" />
                   <div class="flex items-center text-14-regular min-w-0">
-                    <span class="text-text-strong whitespace-nowrap">~</span>
+                    <span class="text-text-weak whitespace-nowrap overflow-hidden overflow-ellipsis truncate min-w-0">
+                      {getDirectory(path)}
+                    </span>
+                    <span class="text-text-strong whitespace-nowrap">{getFilename(path)}</span>
                     <span class="text-text-weak whitespace-nowrap">/</span>
                   </div>
                 </div>
               </div>
             )
-          }
-          return (
-            <div class="w-full flex items-center justify-between rounded-md">
-              <div class="flex items-center gap-x-3 grow min-w-0">
-                <FileIcon node={{ path: item.absolute, type: "directory" }} class="shrink-0 size-4" />
-                <div class="flex items-center text-14-regular min-w-0">
-                  <span class="text-text-weak whitespace-nowrap overflow-hidden overflow-ellipsis truncate min-w-0">
-                    {getDirectory(path)}
-                  </span>
-                  <span class="text-text-strong whitespace-nowrap">{getFilename(path)}</span>
-                  <span class="text-text-weak whitespace-nowrap">/</span>
-                </div>
-              </div>
-            </div>
-          )
-        }}
-      </List>
+          }}
+        </List>
+        <div class="mt-2 pt-3 pb-3 px-3 border-t border-border-weak-base flex justify-end gap-2">
+          <Button size="small" variant="secondary" onClick={() => dialog.close()}>
+            {language.t("common.cancel")}
+          </Button>
+          <Button size="small" onClick={openFolder} disabled={!canOpen()}>
+            {language.t("common.open")}
+          </Button>
+        </div>
+      </div>
     </Dialog>
   )
 }

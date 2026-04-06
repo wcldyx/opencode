@@ -325,6 +325,12 @@ export const dict = {
 
   "dialog.directory.search.placeholder": "搜索文件夹",
   "dialog.directory.empty": "未找到文件夹",
+  "dialog.directory.roots": "磁盘",
+  "dialog.directory.action.up": "上一级",
+  "dialog.directory.action.newFolder": "新建文件夹",
+  "dialog.directory.prompt.newFolder": "新建文件夹",
+  "dialog.directory.error.invalidName": "文件夹名称不能包含斜杠",
+  "dialog.directory.confirm.delete": "确认删除文件夹“{{name}}”？",
 
   "dialog.server.title": "服务器",
   "dialog.server.description": "切换此应用连接的 OpenCode 服务器。",

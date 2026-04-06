@@ -308,6 +308,12 @@ export const dict = {
 
   "dialog.directory.search.placeholder": "Search folders",
   "dialog.directory.empty": "No folders found",
+  "dialog.directory.roots": "Drives",
+  "dialog.directory.action.up": "Up",
+  "dialog.directory.action.newFolder": "New folder",
+  "dialog.directory.prompt.newFolder": "New folder",
+  "dialog.directory.error.invalidName": "Folder name cannot include slash",
+  "dialog.directory.confirm.delete": 'Delete folder "{{name}}"?',
 
   "app.server.unreachable": "Could not reach {{server}}",
   "app.server.retrying": "Retrying automatically...",

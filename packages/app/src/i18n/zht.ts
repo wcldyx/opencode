@@ -305,6 +305,12 @@ export const dict = {
 
   "dialog.directory.search.placeholder": "搜尋資料夾",
   "dialog.directory.empty": "找不到資料夾",
+  "dialog.directory.roots": "磁碟",
+  "dialog.directory.action.up": "上一層",
+  "dialog.directory.action.newFolder": "新增資料夾",
+  "dialog.directory.prompt.newFolder": "新增資料夾",
+  "dialog.directory.error.invalidName": "資料夾名稱不能包含斜線",
+  "dialog.directory.confirm.delete": "確定刪除資料夾「{{name}}」？",
 
   "dialog.server.title": "伺服器",
   "dialog.server.description": "切換此應用程式連線的 OpenCode 伺服器。",

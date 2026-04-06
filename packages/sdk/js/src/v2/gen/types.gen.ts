@@ -4521,6 +4521,69 @@ export type FileStatusResponses = {
 
 export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
+export type FileRmdirData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/file/directory"
+}
+
+export type FileRmdirResponses = {
+  /**
+   * Directory removed
+   */
+  200: boolean
+}
+
+export type FileRmdirResponse = FileRmdirResponses[keyof FileRmdirResponses]
+
+export type FileRenameData = {
+  body?: {
+    from: string
+    to: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/file/directory"
+}
+
+export type FileRenameResponses = {
+  /**
+   * Directory renamed
+   */
+  200: boolean
+}
+
+export type FileRenameResponse = FileRenameResponses[keyof FileRenameResponses]
+
+export type FileMkdirData = {
+  body?: {
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/file/directory"
+}
+
+export type FileMkdirResponses = {
+  /**
+   * Directory created
+   */
+  200: boolean
+}
+
+export type FileMkdirResponse = FileMkdirResponses[keyof FileMkdirResponses]
+
 export type EventSubscribeData = {
   body?: never
   path?: never

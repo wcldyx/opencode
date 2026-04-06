@@ -193,5 +193,93 @@ export const FileRoutes = lazy(() =>
         const content = await File.status()
         return c.json(content)
       },
+    )
+    .post(
+      "/file/directory",
+      describeRoute({
+        summary: "Create directory",
+        description: "Create a directory in a specified path.",
+        operationId: "file.mkdir",
+        responses: {
+          200: {
+            description: "Directory created",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          path: z.string(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        await File.mkdir(body.path)
+        return c.json(true)
+      },
+    )
+    .patch(
+      "/file/directory",
+      describeRoute({
+        summary: "Rename directory",
+        description: "Rename or move a directory inside the current project scope.",
+        operationId: "file.rename",
+        responses: {
+          200: {
+            description: "Directory renamed",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          from: z.string(),
+          to: z.string(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        await File.rename({ from: body.from, to: body.to })
+        return c.json(true)
+      },
+    )
+    .delete(
+      "/file/directory",
+      describeRoute({
+        summary: "Remove directory",
+        description: "Remove a directory and its children.",
+        operationId: "file.rmdir",
+        responses: {
+          200: {
+            description: "Directory removed",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "query",
+        z.object({
+          path: z.string(),
+        }),
+      ),
+      async (c) => {
+        const query = c.req.valid("query")
+        await File.rmdir(query.path)
+        return c.json(true)
+      },
     ),
 )

@@ -330,6 +330,9 @@ export namespace File {
     readonly status: () => Effect.Effect<File.Info[]>
     readonly read: (file: string) => Effect.Effect<File.Content>
     readonly list: (dir?: string) => Effect.Effect<File.Node[]>
+    readonly mkdir: (dir: string) => Effect.Effect<void, AppFileSystem.Error>
+    readonly rename: (input: { from: string; to: string }) => Effect.Effect<void, AppFileSystem.Error>
+    readonly rmdir: (dir: string) => Effect.Effect<void, AppFileSystem.Error>
     readonly search: (input: {
       query: string
       limit?: number
@@ -623,6 +626,28 @@ export namespace File {
         })
       })
 
+      const mkdir = Effect.fn("File.mkdir")(function* (dir: string) {
+        const next = path.join(Instance.directory, dir)
+        if (!Instance.containsPath(next)) throw new Error("Access denied: path escapes project directory")
+        yield* appFs.makeDirectory(next, { recursive: true })
+      })
+
+      const rename = Effect.fn("File.rename")(function* (input: { from: string; to: string }) {
+        const from = path.join(Instance.directory, input.from)
+        const to = path.join(Instance.directory, input.to)
+        if (!Instance.containsPath(from)) throw new Error("Access denied: path escapes project directory")
+        if (!Instance.containsPath(to)) throw new Error("Access denied: path escapes project directory")
+        if (from === Instance.directory) throw new Error("Cannot rename root directory")
+        yield* appFs.rename(from, to)
+      })
+
+      const rmdir = Effect.fn("File.rmdir")(function* (dir: string) {
+        const next = path.join(Instance.directory, dir)
+        if (!Instance.containsPath(next)) throw new Error("Access denied: path escapes project directory")
+        if (next === Instance.directory) throw new Error("Cannot remove root directory")
+        yield* appFs.remove(next, { recursive: true })
+      })
+
       const search = Effect.fn("File.search")(function* (input: {
         query: string
         limit?: number
@@ -656,7 +681,7 @@ export namespace File {
       })
 
       log.info("init")
-      return Service.of({ init, status, read, list, search })
+      return Service.of({ init, status, read, list, mkdir, rename, rmdir, search })
     }),
   )
 
@@ -678,6 +703,18 @@ export namespace File {
 
   export async function list(dir?: string) {
     return runPromise((svc) => svc.list(dir))
+  }
+
+  export async function mkdir(dir: string) {
+    return runPromise((svc) => svc.mkdir(dir))
+  }
+
+  export async function rename(input: { from: string; to: string }) {
+    return runPromise((svc) => svc.rename(input))
+  }
+
+  export async function rmdir(dir: string) {
+    return runPromise((svc) => svc.rmdir(dir))
   }
 
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
