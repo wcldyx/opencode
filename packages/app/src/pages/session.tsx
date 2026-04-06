@@ -1089,6 +1089,7 @@ export default function Page() {
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
       if (composer.blocked()) return
+      if (platform.platform === "mobile") return
       inputRef?.focus()
     }
   }
@@ -1166,7 +1167,10 @@ export default function Page() {
     setFileTreeTab("all")
   }
 
-  const focusInput = () => inputRef?.focus()
+  const focusInput = () => {
+    if (platform.platform === "mobile") return
+    inputRef?.focus()
+  }
 
   useSessionCommands({
     navigateMessageByOffset,
@@ -1914,7 +1918,7 @@ export default function Page() {
     on(
       () => params.id,
       (id) => {
-        if (!id) requestAnimationFrame(() => inputRef?.focus())
+        if (!id) return
       },
     ),
   )

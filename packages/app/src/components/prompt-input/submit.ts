@@ -418,12 +418,17 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       prompt.reset()
       input.setMode("normal")
       input.setPopover(null)
+      if (platform.platform === "mobile") input.editor()?.blur()
     }
 
     const restoreInput = () => {
       prompt.set(currentPrompt, input.promptLength(currentPrompt))
       input.setMode(mode)
       input.setPopover(null)
+      if (platform.platform === "mobile") {
+        input.queueScroll()
+        return
+      }
       requestAnimationFrame(() => {
         const editor = input.editor()
         if (!editor) return
@@ -445,6 +450,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     if (mode === "shell") {
       clearInput()
+      void platform.trackSession?.(session.id, sessionDirectory)
       client.session
         .shell({
           sessionID: session.id,
@@ -453,6 +459,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           command: text,
         })
         .catch((err) => {
+          void platform.untrackSession?.(session.id)
           showToast({
             title: language.t("prompt.toast.shellSendFailed.title"),
             description: errorMessage(err),
@@ -468,6 +475,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       const customCommand = sync.data.command.find((c) => c.name === commandName)
       if (customCommand) {
         clearInput()
+        void platform.trackSession?.(session.id, sessionDirectory)
         client.session
           .command({
             sessionID: session.id,
@@ -485,6 +493,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             })),
           })
           .catch((err) => {
+            void platform.untrackSession?.(session.id)
             showToast({
               title: language.t("prompt.toast.commandSendFailed.title"),
               description: formatServerError(err, language.t, language.t("common.requestFailed")),

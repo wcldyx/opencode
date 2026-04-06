@@ -33,7 +33,6 @@ public class NativeKeepalivePlugin extends Plugin {
     Boolean notify = call.getBoolean("notify");
     KeepaliveService.configure(url, call.getString("username"), call.getString("password"), notify);
     try {
-      Log.d(TAG, "configure url=" + url);
       start();
       call.resolve();
     } catch (Exception err) {
@@ -53,8 +52,8 @@ public class NativeKeepalivePlugin extends Plugin {
     }
 
     KeepaliveService.track(sessionID, directory);
+    KeepaliveService.refresh();
     try {
-      Log.d(TAG, "track sessionID=" + sessionID);
       start();
       call.resolve();
     } catch (Exception err) {
@@ -67,7 +66,10 @@ public class NativeKeepalivePlugin extends Plugin {
   public void untrack(PluginCall call) {
     KeepaliveService.attach(getContext());
     String sessionID = call.getString("sessionID");
-    if (sessionID != null && !sessionID.isEmpty()) KeepaliveService.untrack(sessionID);
+    if (sessionID != null && !sessionID.isEmpty()) {
+      KeepaliveService.untrack(sessionID);
+      KeepaliveService.refresh();
+    }
     call.resolve();
   }
 
@@ -76,6 +78,15 @@ public class NativeKeepalivePlugin extends Plugin {
     KeepaliveService.attach(getContext());
     Boolean notify = call.getBoolean("notify");
     KeepaliveService.setNotify(notify == null ? true : notify);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void setSound(PluginCall call) {
+    KeepaliveService.attach(getContext());
+    KeepaliveState.setSound(call.getString("sound"));
+    KeepaliveService.syncSound();
+    KeepaliveService.refresh();
     call.resolve();
   }
 
@@ -115,6 +126,14 @@ public class NativeKeepalivePlugin extends Plugin {
     out.put("maker", maker);
     out.put("model", model);
     out.put("battery", battery);
+    call.resolve(out);
+  }
+
+  @PluginMethod
+  public void consumeLaunchHref(PluginCall call) {
+    KeepaliveService.attach(getContext());
+    JSObject out = new JSObject();
+    out.put("href", KeepaliveState.consumeLaunchHref());
     call.resolve(out);
   }
 

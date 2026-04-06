@@ -6,12 +6,16 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.net.Uri;
+import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
 final class KeepaliveNotifier {
+  private static final String TAG = "KeepaliveNotifier";
   static final String KEEPALIVE_CHANNEL = "opencode-keepalive";
   static final String TASK_CHANNEL = "opencode-task-v2";
   static final long[] TASK_VIBRATE = new long[] { 0, 320, 160, 380 };
@@ -34,6 +38,7 @@ final class KeepaliveNotifier {
     );
     keepalive.setDescription("OpenCode 后台常驻服务");
     manager.createNotificationChannel(keepalive);
+    manager.deleteNotificationChannel(TASK_CHANNEL);
 
     NotificationChannel done = new NotificationChannel(
       TASK_CHANNEL,
@@ -44,7 +49,7 @@ final class KeepaliveNotifier {
     done.enableVibration(true);
     done.setVibrationPattern(TASK_VIBRATE);
     done.setSound(
-      RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+      sound(),
       new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
     );
     manager.createNotificationChannel(done);
@@ -64,7 +69,7 @@ final class KeepaliveNotifier {
     return new NotificationCompat.Builder(svc, KEEPALIVE_CHANNEL)
       .setSmallIcon(R.mipmap.ic_launcher)
       .setContentTitle("OpenCode 正在运行")
-      .setContentText("后台保活已开启")
+      .setContentText(KeepaliveState.status())
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setContentIntent(pending)
@@ -72,6 +77,7 @@ final class KeepaliveNotifier {
   }
 
   void done(String sessionID, String href, String body) {
+    ring(sessionID);
     Intent launch = svc.getPackageManager().getLaunchIntentForPackage(svc.getPackageName());
     if (launch == null) launch = new Intent(svc, MainActivity.class);
     launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -100,5 +106,31 @@ final class KeepaliveNotifier {
     NotificationManager manager = svc.getSystemService(NotificationManager.class);
     if (manager == null) return;
     manager.notify(sessionID.hashCode(), item);
+  }
+
+  private void ring(String sessionID) {
+    try {
+      Ringtone item = RingtoneManager.getRingtone(svc, sound());
+      if (item == null) return;
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        item.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build());
+      }
+      item.play();
+    } catch (Exception err) {
+      Log.d(TAG, "done sessionID=" + sessionID + " ringtone-failed", err);
+    }
+  }
+
+  private Uri sound() {
+    int id = resource();
+    return Uri.parse("android.resource://" + svc.getPackageName() + "/" + id);
+  }
+
+  private int resource() {
+    String name = KeepaliveState.sound();
+    if (name == null || name.isEmpty()) return R.raw.staplebops_01;
+    int id = svc.getResources().getIdentifier(name.replace('-', '_'), "raw", svc.getPackageName());
+    if (id != 0) return id;
+    return R.raw.staplebops_01;
   }
 }

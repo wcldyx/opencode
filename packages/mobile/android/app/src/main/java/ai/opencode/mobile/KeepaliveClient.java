@@ -1,23 +1,58 @@
 package ai.opencode.mobile;
 
 import android.util.Base64;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 final class KeepaliveClient {
+  interface Watch {
+    void onEvent(JSONObject event) throws Exception;
+  }
+
   KeepaliveClient() {}
+
+  void events(Watch watch) throws Exception {
+    HttpURLConnection conn = null;
+    try {
+      conn = open("/global/event", "text/event-stream", 35_000);
+      int code = conn.getResponseCode();
+      if (code >= 400) throw new IllegalStateException("sse failed: " + code + " " + read(conn.getErrorStream()));
+      InputStream body = conn.getInputStream();
+      if (body == null) throw new IllegalStateException("sse missing body");
+      try (BufferedReader reader = new BufferedReader(new InputStreamReader(body, StandardCharsets.UTF_8))) {
+        StringBuilder data = new StringBuilder();
+        while (true) {
+          String line = reader.readLine();
+          if (line == null) {
+            flush(data, watch);
+            return;
+          }
+          if (line.isEmpty()) {
+            flush(data, watch);
+            continue;
+          }
+          if (!line.startsWith("data:")) continue;
+          if (data.length() > 0) data.append('\n');
+          data.append(line.substring(5).trim());
+        }
+      }
+    } finally {
+      if (conn != null) conn.disconnect();
+    }
+  }
 
   JSONObject status() throws Exception {
     HttpURLConnection conn = null;
     try {
-      conn = open("/session/status");
+      conn = open("/session/status", "application/json", 10_000);
       String body = read(conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream());
       if (body.isEmpty()) return new JSONObject();
       JSONObject root = new JSONObject(body);
@@ -48,7 +83,7 @@ final class KeepaliveClient {
   String reply(String sessionID) {
     HttpURLConnection conn = null;
     try {
-      conn = open("/session/" + sessionID + "/message?limit=1");
+      conn = open("/session/" + sessionID + "/message?limit=1", "application/json", 10_000);
       String raw = read(conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream());
       JSONArray list = parse(raw);
       if (list == null || list.length() == 0) return "";
@@ -88,7 +123,7 @@ final class KeepaliveClient {
   private JSONArray messages(String sessionID) throws Exception {
     HttpURLConnection conn = null;
     try {
-      conn = open("/session/" + sessionID + "/message?limit=1");
+      conn = open("/session/" + sessionID + "/message?limit=1", "application/json", 10_000);
       String raw = read(conn.getResponseCode() >= 400 ? conn.getErrorStream() : conn.getInputStream());
       return parse(raw);
     } finally {
@@ -96,7 +131,7 @@ final class KeepaliveClient {
     }
   }
 
-  private HttpURLConnection open(String path) throws Exception {
+  private HttpURLConnection open(String path, String accept, int readTimeout) throws Exception {
     String url = KeepaliveState.url();
     String username = KeepaliveState.username();
     String password = KeepaliveState.password();
@@ -104,8 +139,8 @@ final class KeepaliveClient {
     HttpURLConnection conn = (HttpURLConnection) new URL(target + path).openConnection();
     conn.setRequestMethod("GET");
     conn.setConnectTimeout(10_000);
-    conn.setReadTimeout(10_000);
-    conn.setRequestProperty("Accept", "application/json");
+    conn.setReadTimeout(readTimeout);
+    conn.setRequestProperty("Accept", accept);
 
     if (password != null && !password.isEmpty()) {
       String user = username == null || username.isEmpty() ? "opencode" : username;
@@ -155,5 +190,12 @@ final class KeepaliveClient {
     if (second.isEmpty()) return first + "…";
     if (text.length() > width * 2) return first + "\n" + second + "…";
     return first + "\n" + second;
+  }
+
+  private void flush(StringBuilder data, Watch watch) throws Exception {
+    if (data.length() == 0) return;
+    String raw = data.toString();
+    data.setLength(0);
+    watch.onEvent(new JSONObject(raw));
   }
 }

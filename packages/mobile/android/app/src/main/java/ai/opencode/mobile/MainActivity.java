@@ -59,7 +59,6 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
 
     try {
-      Log.d(TAG, "start keepalive from activity");
       ContextCompat.startForegroundService(this, new Intent(this, KeepaliveService.class));
     } catch (Exception err) {
       Log.e(TAG, "start keepalive failed", err);
@@ -111,8 +110,7 @@ public class MainActivity extends BridgeActivity {
     if (intent == null) return;
     String href = intent.getStringExtra(EXTRA_HREF);
     if (href == null || href.isEmpty()) return;
-    if (bridge == null || bridge.getWebView() == null) return;
-    bridge.getWebView().loadUrl("http://localhost" + href);
+    KeepaliveState.setLaunchHref(href);
     intent.removeExtra(EXTRA_HREF);
   }
 }

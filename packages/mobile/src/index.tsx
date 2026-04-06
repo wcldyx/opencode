@@ -1,13 +1,16 @@
 // @refresh reload
 
+import { createEffect } from "solid-js"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface, PlatformProvider, ServerConnection, type Platform } from "@opencode-ai/app"
+import { useSettings } from "../../app/src/context/settings"
 import pkg from "../package.json"
 import {
   backgroundStatus,
   back,
   bindBack,
   bindLifecycle,
+  consumeLaunchHref,
   configureTracker,
   ensureNotifications,
   nativeFetch,
@@ -18,9 +21,11 @@ import {
   openPowerSettings,
   pulse,
   setTrackerNotify,
+  setTrackerSound,
   trackSession,
   untrackSession,
 } from "./bridge"
+import { handleNotificationClick } from "@opencode-ai/app"
 
 const root = document.getElementById("root")
 if (!(root instanceof HTMLElement)) throw new Error("root not found")
@@ -104,12 +109,27 @@ const platform: Platform = {
 void bindBack()
 void bindLifecycle()
 
-void ensureNotifications().then((ok) => {
-  if (ok) return
-  const go = window.confirm("OpenCode 的系统通知已被关闭，后台保活通知将无法显示。现在打开通知设置吗？")
-  if (!go) return
-  void openNotificationSettings()
-})
+const route = () => {
+  void consumeLaunchHref().then((href) => {
+    if (!href) return
+    window.setTimeout(() => handleNotificationClick(href), 0)
+  })
+}
+
+route()
+window.addEventListener("opencode:resume", route)
+
+void ensureNotifications()
+
+function Sync() {
+  const settings = useSettings()
+
+  createEffect(() => {
+    setTrackerSound(settings.sounds.agentEnabled() ? settings.sounds.agent() : undefined)
+  })
+
+  return null
+}
 
 void backgroundStatus().then((info) => {
   if (seen()) return
@@ -134,7 +154,9 @@ render(
           defaultServer={ServerConnection.Key.make(url)}
           servers={[{ type: "http", http: { url } }]}
           disableHealthCheck
-        />
+        >
+          <Sync />
+        </AppInterface>
       </AppBaseProviders>
     </PlatformProvider>
   ),

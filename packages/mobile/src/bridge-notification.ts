@@ -138,7 +138,6 @@ export async function notify(title: string, body?: string, href?: string) {
 
 export async function ensureNotifications() {
   await init()
-  const perm = await LocalNotifications.checkPermissions().catch(() => ({ display: "denied" as const }))
-  const on = await LocalNotifications.areEnabled().catch(() => ({ value: false }))
-  return perm.display === "granted" && on.value
+  const on = await LocalNotifications.areEnabled().catch(() => ({ value: true }))
+  return on.value
 }

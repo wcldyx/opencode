@@ -17,23 +17,28 @@ final class KeepaliveState {
   private static final String KEY_USERNAME = "username";
   private static final String KEY_PASSWORD = "password";
   private static final String KEY_NOTIFY = "notify";
+  private static final String KEY_SOUND = "sound";
   private static final String KEY_TRACKED = "tracked";
   private static final String KEY_SEEN = "seen";
   private static final String KEY_START = "start";
   private static final String KEY_DIR = "dir";
+  private static final String KEY_HREF = "href";
 
   private static final Set<String> tracked = ConcurrentHashMap.newKeySet();
   private static final Set<String> seen = ConcurrentHashMap.newKeySet();
   private static final Set<String> done = ConcurrentHashMap.newKeySet();
   private static final Map<String, Long> start = new ConcurrentHashMap<>();
   private static final Map<String, String> dir = new ConcurrentHashMap<>();
+  private static final Map<String, String> stage = new ConcurrentHashMap<>();
 
   private static volatile String url;
   private static volatile String username;
   private static volatile String password;
   private static volatile boolean notify = true;
+  private static volatile String sound = "staplebops-01";
   private static volatile boolean active;
   private static volatile Context app;
+  private static volatile String href;
 
   private KeepaliveState() {}
 
@@ -50,6 +55,7 @@ final class KeepaliveState {
       done.clear();
       start.clear();
       dir.clear();
+      stage.clear();
     }
     url = nextUrl;
     username = nextUser;
@@ -67,11 +73,17 @@ final class KeepaliveState {
     persist();
   }
 
+  static void setSound(String next) {
+    sound = next == null || next.isEmpty() ? "staplebops-01" : next;
+    persist();
+  }
+
   static void track(String sessionID, String directory) {
     tracked.add(sessionID);
     done.remove(sessionID);
     start.put(sessionID, System.currentTimeMillis());
     if (directory != null && !directory.isEmpty()) dir.put(sessionID, directory);
+    stage.put(sessionID, "sending");
     persist();
   }
 
@@ -81,6 +93,7 @@ final class KeepaliveState {
     done.remove(sessionID);
     start.remove(sessionID);
     dir.remove(sessionID);
+    stage.remove(sessionID);
     persist();
   }
 
@@ -88,12 +101,38 @@ final class KeepaliveState {
   static String username() { return username; }
   static String password() { return password; }
   static boolean notifyOn() { return notify; }
+  static String sound() { return sound; }
   static boolean active() { return active; }
   static Set<String> tracked() { return tracked; }
   static Set<String> seen() { return seen; }
   static Set<String> done() { return done; }
   static Map<String, Long> start() { return start; }
   static String directory(String sessionID) { return dir.get(sessionID); }
+  static void setLaunchHref(String value) {
+    href = value;
+    persist();
+  }
+
+  static String consumeLaunchHref() {
+    String value = href;
+    href = null;
+    persist();
+    return value;
+  }
+
+  static void setStage(String sessionID, String value) {
+    if (sessionID == null || sessionID.isEmpty()) return;
+    if (!tracked.contains(sessionID)) return;
+    stage.put(sessionID, value);
+  }
+
+  static String status() {
+    if (tracked.isEmpty()) return "空闲";
+    if (stage.containsValue("waiting")) return "等待授权";
+    if (stage.containsValue("receiving")) return "接收中";
+    if (stage.containsValue("sending")) return "发送中";
+    return "处理中";
+  }
 
   static String href(String sessionID) {
     String value = dir.get(sessionID);
@@ -117,10 +156,12 @@ final class KeepaliveState {
       editor.putString(KEY_USERNAME, username);
       editor.putString(KEY_PASSWORD, password);
       editor.putBoolean(KEY_NOTIFY, notify);
+      editor.putString(KEY_SOUND, sound);
       editor.putString(KEY_TRACKED, array(tracked).toString());
       editor.putString(KEY_SEEN, array(seen).toString());
       editor.putString(KEY_START, object(start).toString());
       editor.putString(KEY_DIR, objectString(dir).toString());
+      editor.putString(KEY_HREF, href);
       editor.apply();
     } catch (Exception ignored) {
     }
@@ -134,6 +175,8 @@ final class KeepaliveState {
       username = pref.getString(KEY_USERNAME, username);
       password = pref.getString(KEY_PASSWORD, password);
       notify = pref.getBoolean(KEY_NOTIFY, notify);
+      sound = pref.getString(KEY_SOUND, sound);
+      href = pref.getString(KEY_HREF, href);
 
       Set<String> trackedState = set(new JSONArray(pref.getString(KEY_TRACKED, "[]")));
       Set<String> seenState = set(new JSONArray(pref.getString(KEY_SEEN, "[]")));

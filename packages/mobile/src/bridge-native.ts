@@ -38,6 +38,8 @@ export type Keepalive = {
   track(input: { sessionID: string; directory?: string }): Promise<void>
   untrack(input: { sessionID: string }): Promise<void>
   setNotify(input: { notify: boolean }): Promise<void>
+  setSound(input: { sound?: string }): Promise<void>
+  consumeLaunchHref(): Promise<{ href?: string }>
   openNotificationSettings(): Promise<void>
   backgroundStatus(): Promise<{ maker: string; model: string; battery: boolean }>
   openPowerSettings(): Promise<void>

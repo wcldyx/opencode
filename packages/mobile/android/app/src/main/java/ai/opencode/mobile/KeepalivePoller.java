@@ -1,13 +1,12 @@
 package ai.opencode.mobile;
 
-import android.util.Log;
+import android.os.PowerManager;
 
 import org.json.JSONObject;
 
 import java.util.HashSet;
 
 final class KeepalivePoller implements Runnable {
-  private static final String TAG = "KeepalivePoller";
   private static final long TRACK_GRACE_MS = 15_000;
 
   private final KeepaliveService svc;
@@ -22,7 +21,18 @@ final class KeepalivePoller implements Runnable {
 
   @Override
   public void run() {
-    poll();
+    PowerManager mgr = (PowerManager) svc.getSystemService(KeepaliveService.POWER_SERVICE);
+    PowerManager.WakeLock lock = null;
+    try {
+      if (mgr != null) {
+        lock = mgr.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "opencode:keepalive-poll");
+        lock.setReferenceCounted(false);
+        lock.acquire(10_000L);
+      }
+      poll();
+    } finally {
+      if (lock != null && lock.isHeld()) lock.release();
+    }
   }
 
   void poll() {
@@ -37,42 +47,48 @@ final class KeepalivePoller implements Runnable {
           if (!"idle".equals(item.optString("type"))) {
             KeepaliveState.seen().add(sessionID);
             KeepaliveState.done().remove(sessionID);
+            KeepaliveState.setStage(sessionID, "receiving");
+            KeepaliveService.refresh();
             continue;
           }
-          if (!client.done(sessionID)) {
+          boolean done = client.done(sessionID);
+          if (!done) {
             KeepaliveState.done().remove(sessionID);
             continue;
           }
           if (!KeepaliveState.done().add(sessionID)) {
             finish(sessionID);
+            continue;
           }
           continue;
         }
 
         if (!KeepaliveState.seen().contains(sessionID)) {
           long at = KeepaliveState.start().getOrDefault(sessionID, 0L);
-          if (System.currentTimeMillis() - at < TRACK_GRACE_MS) continue;
+          long age = System.currentTimeMillis() - at;
+          if (age < TRACK_GRACE_MS) continue;
         }
 
-        if (!client.done(sessionID)) {
+        boolean done = client.done(sessionID);
+        if (!done) {
           KeepaliveState.done().remove(sessionID);
           continue;
         }
         if (!KeepaliveState.done().add(sessionID)) {
           finish(sessionID);
+          continue;
         }
       }
-    } catch (Exception err) {
-      Log.d(TAG, "poll failed", err);
-    }
+    } catch (Exception ignored) {}
   }
 
-  private void finish(String sessionID) {
-    Log.d(TAG, "finish sessionID=" + sessionID);
+  synchronized void finish(String sessionID) {
+    if (!KeepaliveState.tracked().contains(sessionID)) return;
     String href = KeepaliveState.href(sessionID);
     KeepaliveState.untrack(sessionID);
+    KeepaliveService.refresh();
     if (!KeepaliveState.notifyOn()) return;
-    if (KeepaliveState.active() || svc.foreground()) return;
+    if (KeepaliveState.active()) return;
     String body = client.reply(sessionID);
     if (body == null || body.isEmpty()) body = "任务已完成";
     note.done(sessionID, href, body);

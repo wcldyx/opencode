@@ -11,9 +11,20 @@ export async function setTrackerNotify(notify: boolean) {
   await nativeKeepalive.setNotify({ notify }).catch(() => undefined)
 }
 
+export async function setTrackerSound(sound?: string) {
+  if (!Capacitor.isNativePlatform()) return
+  await nativeKeepalive.setSound({ sound }).catch(() => undefined)
+}
+
 export async function openNotificationSettings() {
   if (!Capacitor.isNativePlatform()) return
   await nativeKeepalive.openNotificationSettings().catch(() => undefined)
+}
+
+export async function consumeLaunchHref() {
+  if (!Capacitor.isNativePlatform()) return undefined
+  const item = await nativeKeepalive.consumeLaunchHref().catch(() => ({ href: undefined }))
+  return typeof item.href === "string" && item.href ? item.href : undefined
 }
 
 export async function backgroundStatus() {
