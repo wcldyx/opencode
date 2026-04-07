@@ -10,6 +10,7 @@ import { Project } from "@opencode-ai/sdk/v2"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { decode64 } from "@/utils/base64"
 import { same } from "@/utils/same"
+import { directoryKey } from "@/utils/directory"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { createPathHelpers } from "./file/path"
 
@@ -581,7 +582,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         list,
         open(directory: string) {
           const root = rootFor(directory)
-          if (server.projects.list().find((x) => x.worktree === root)) return
+          const key = directoryKey(root)
+          if (server.projects.list().some((x) => directoryKey(x.worktree) === key)) return
           globalSync.project.loadSessions(root)
           server.projects.open(root)
         },

@@ -1,14 +1,6 @@
-export const normalizeDirectory = (directory: string) => {
-  const value = directory.replaceAll("\\", "/")
-  const drive = value.match(/^([A-Za-z]:)\/+$/)
-  if (drive) return `${drive[1].toUpperCase()}/`
-  if (/^\/+$/i.test(value)) return "/"
+import { normalizeDirectory } from "./directory"
 
-  const next = value.replace(/\/+$/, "")
-  const path = next.match(/^([A-Za-z]):(\/.*)?$/)
-  if (path) return `${path[1].toUpperCase()}:${path[2] ?? ""}`
-  return next
-}
+export { normalizeDirectory }
 
 type State =
   | {

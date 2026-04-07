@@ -1,6 +1,6 @@
 import { getFilename } from "@opencode-ai/util/path"
 import { type Session } from "@opencode-ai/sdk/v2/client"
-import { normalizeDirectory } from "@/utils/worktree"
+import { directoryKey } from "@/utils/directory"
 
 type SessionStore = {
   session?: Session[]
@@ -8,7 +8,7 @@ type SessionStore = {
 }
 
 export const workspaceKey = (directory: string) => {
-  return normalizeDirectory(directory)
+  return directoryKey(directory)
 }
 
 function sortSessions(now: number) {
@@ -25,11 +25,20 @@ function sortSessions(now: number) {
   }
 }
 
-const isRootVisibleSession = (session: Session, directory: string) =>
-  workspaceKey(session.directory) === workspaceKey(directory) && !session.parentID && !session.time?.archived
+const rootKey = (store: SessionStore) => {
+  const direct = workspaceKey(store.path.directory)
+  if (direct) return direct
+  return workspaceKey(store.session?.find((session) => !!session.directory)?.directory ?? "")
+}
 
-const roots = (store: SessionStore) =>
-  (store.session ?? []).filter((session) => isRootVisibleSession(session, store.path.directory))
+const isRootVisibleSession = (session: Session, key: string) =>
+  workspaceKey(session.directory) === key && !session.parentID && !session.time?.archived
+
+const roots = (store: SessionStore) => {
+  const key = rootKey(store)
+  if (!key) return []
+  return (store.session ?? []).filter((session) => isRootVisibleSession(session, key))
+}
 
 export const sortedRootSessions = (store: SessionStore, now: number) => roots(store).sort(sortSessions(now))
 

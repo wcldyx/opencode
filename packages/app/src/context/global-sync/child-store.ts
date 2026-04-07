@@ -1,7 +1,7 @@
 import { createRoot, getOwner, onCleanup, runWithOwner, type Owner } from "solid-js"
 import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
-import { normalizeDirectory } from "@/utils/worktree"
+import { directoryKey } from "@/utils/directory"
 import type { VcsInfo } from "@opencode-ai/sdk/v2/client"
 import {
   DIR_IDLE_TTL_MS,
@@ -33,7 +33,7 @@ export function createChildStoreManager(input: {
   const ownerPins = new WeakMap<object, Set<string>>()
   const disposers = new Map<string, () => void>()
 
-  const norm = (directory: string) => normalizeDirectory(directory)
+  const norm = (directory: string) => directoryKey(directory)
 
   const mark = (directory: string) => {
     const dir = norm(directory)
@@ -172,7 +172,7 @@ export function createChildStoreManager(input: {
             provider_ready: false,
             provider: { all: [], connected: [], default: {} },
             config: {},
-            path: { state: "", config: "", worktree: "", directory: "", home: "" },
+            path: { state: "", config: "", worktree: "", directory: dir, home: "" },
             status: "loading" as const,
             agent: [],
             command: [],

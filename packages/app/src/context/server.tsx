@@ -4,10 +4,81 @@ import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { Persist, persisted } from "@/utils/persist"
 import { useCheckServerHealth } from "@/utils/server-health"
+import { directoryKey } from "@/utils/directory"
 
 type StoredProject = { worktree: string; expanded: boolean }
 type StoredServer = string | ServerConnection.HttpBase | ServerConnection.Http
 const HEALTH_POLL_INTERVAL_MS = 10_000
+
+const dirKey = (dir: string) => directoryKey(dir)
+
+function normalizeProjects(list: StoredProject[]) {
+  const map = new Map<string, StoredProject>()
+
+  for (const item of list) {
+    const worktree = dirKey(item.worktree)
+    const prev = map.get(worktree)
+    if (!prev) {
+      map.set(worktree, { ...item, worktree })
+      continue
+    }
+    if (item.expanded && !prev.expanded) map.set(worktree, { ...prev, expanded: true })
+  }
+
+  return [...map.values()]
+}
+
+function migrate(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+
+  const next = { ...(value as Record<string, unknown>) }
+  let changed = false
+
+  const projects = next.projects
+  if (projects && typeof projects === "object" && !Array.isArray(projects)) {
+    const out = Object.fromEntries(
+      Object.entries(projects).map(([key, list]) => {
+        if (!Array.isArray(list)) return [key, list]
+        const items = list
+          .filter(
+            (item): item is StoredProject =>
+              !!item && typeof item === "object" && typeof (item as StoredProject).worktree === "string",
+          )
+          .map((item) => ({ worktree: dirKey(item.worktree), expanded: !!item.expanded }))
+        const normalized = normalizeProjects(items)
+        if (
+          normalized.length !== list.length ||
+          normalized.some((item, idx) => item.worktree !== items[idx]?.worktree || item.expanded !== items[idx]?.expanded)
+        ) {
+          changed = true
+        }
+        return [key, normalized]
+      }),
+    )
+    next.projects = out
+  }
+
+  const last = next.lastProject
+  if (last && typeof last === "object" && !Array.isArray(last)) {
+    const out = Object.fromEntries(
+      Object.entries(last).map(([key, dir]) => {
+        if (typeof dir !== "string") return [key, dir]
+        const normalized = dirKey(dir)
+        if (normalized !== dir) changed = true
+        return [key, normalized]
+      }),
+    )
+    next.lastProject = out
+  }
+
+  return changed ? next : value
+}
+
+export const ServerTesting = {
+  dirKey,
+  normalizeProjects,
+  migrate,
+}
 
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
@@ -104,7 +175,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const checkServerHealth = useCheckServerHealth()
 
     const [store, setStore, _, ready] = persisted(
-      Persist.global("server", ["server.v3"]),
+      { ...Persist.global("server", ["server.v3"]), migrate },
       createStore({
         list: [] as StoredServer[],
         projects: {} as Record<string, StoredProject[]>,
@@ -224,7 +295,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     })
 
     const origin = createMemo(() => projectsKey(state.active))
-    const projectsList = createMemo(() => store.projects[origin()] ?? [])
+    const projectsList = createMemo(() => normalizeProjects(store.projects[origin()] ?? []))
     const current: Accessor<ServerConnection.Any | undefined> = createMemo(
       () => allServers().find((s) => ServerConnection.key(s) === state.active) ?? allServers()[0],
     )
@@ -275,39 +346,46 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         open(directory: string) {
           const key = origin()
           if (!key) return
-          const current = store.projects[key] ?? []
-          if (current.find((x) => x.worktree === directory)) return
-          setStore("projects", key, [{ worktree: directory, expanded: true }, ...current])
+          const worktree = dirKey(directory)
+          const current = normalizeProjects(store.projects[key] ?? [])
+          if (current.some((x) => x.worktree === worktree)) return
+          setStore("projects", key, [{ worktree, expanded: true }, ...current])
         },
         close(directory: string) {
           const key = origin()
           if (!key) return
-          const current = store.projects[key] ?? []
+          const worktree = dirKey(directory)
+          const current = normalizeProjects(store.projects[key] ?? [])
           setStore(
             "projects",
             key,
-            current.filter((x) => x.worktree !== directory),
+            current.filter((x) => x.worktree !== worktree),
           )
         },
         expand(directory: string) {
           const key = origin()
           if (!key) return
-          const current = store.projects[key] ?? []
-          const index = current.findIndex((x) => x.worktree === directory)
-          if (index !== -1) setStore("projects", key, index, "expanded", true)
+          const worktree = dirKey(directory)
+          const current = normalizeProjects(store.projects[key] ?? [])
+          const index = current.findIndex((x) => x.worktree === worktree)
+          if (index === -1) return
+          setStore("projects", key, current.map((item, idx) => (idx === index ? { ...item, expanded: true } : item)))
         },
         collapse(directory: string) {
           const key = origin()
           if (!key) return
-          const current = store.projects[key] ?? []
-          const index = current.findIndex((x) => x.worktree === directory)
-          if (index !== -1) setStore("projects", key, index, "expanded", false)
+          const worktree = dirKey(directory)
+          const current = normalizeProjects(store.projects[key] ?? [])
+          const index = current.findIndex((x) => x.worktree === worktree)
+          if (index === -1) return
+          setStore("projects", key, current.map((item, idx) => (idx === index ? { ...item, expanded: false } : item)))
         },
         move(directory: string, toIndex: number) {
           const key = origin()
           if (!key) return
-          const current = store.projects[key] ?? []
-          const fromIndex = current.findIndex((x) => x.worktree === directory)
+          const worktree = dirKey(directory)
+          const current = normalizeProjects(store.projects[key] ?? [])
+          const fromIndex = current.findIndex((x) => x.worktree === worktree)
           if (fromIndex === -1 || fromIndex === toIndex) return
           const result = [...current]
           const [item] = result.splice(fromIndex, 1)
@@ -317,12 +395,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         last() {
           const key = origin()
           if (!key) return
-          return store.lastProject[key]
+          const dir = store.lastProject[key]
+          return typeof dir === "string" ? dirKey(dir) : dir
         },
         touch(directory: string) {
           const key = origin()
           if (!key) return
-          setStore("lastProject", key, directory)
+          setStore("lastProject", key, dirKey(directory))
         },
       },
     }

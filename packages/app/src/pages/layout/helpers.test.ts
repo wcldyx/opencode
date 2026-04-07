@@ -198,6 +198,32 @@ describe("layout workspace helpers", () => {
     expect(result?.id).toBe("root")
   })
 
+  test("finds sessions even when store path is empty but directory separators differ", () => {
+    const result = latestRootSession(
+      [
+        {
+          path: { directory: "" },
+          session: [
+            session({
+              id: "root",
+              directory: "G:\\mywork\\myclaw-2",
+              time: { created: 30, updated: 30, archived: undefined },
+            }),
+            session({
+              id: "child",
+              directory: "G:/mywork/myclaw-2",
+              parentID: "parent",
+              time: { created: 40, updated: 40, archived: undefined },
+            }),
+          ],
+        },
+      ],
+      120_000,
+    )
+
+    expect(result?.id).toBe("root")
+  })
+
   test("formats fallback project display name", () => {
     expect(displayName({ worktree: "/tmp/app" })).toBe("app")
     expect(displayName({ worktree: "/tmp/app", name: "My App" })).toBe("My App")

@@ -18,6 +18,7 @@ import { reconcile, type SetStoreFunction, type Store } from "solid-js/store"
 import type { State, VcsCache } from "./types"
 import { cmp, normalizeAgentList, normalizeProviderList } from "./utils"
 import { formatServerError } from "@/utils/server-errors"
+import { directoryKey, sameDirectory } from "@/utils/directory"
 
 type GlobalStore = {
   ready: boolean
@@ -150,7 +151,11 @@ function groupBySession<T extends { id: string; sessionID: string }>(input: T[])
 }
 
 function projectID(directory: string, projects: Project[]) {
-  return projects.find((project) => project.worktree === directory || project.sandboxes?.includes(directory))?.id
+  const key = directoryKey(directory)
+  return projects.find((project) => {
+    if (directoryKey(project.worktree) === key) return true
+    return project.sandboxes?.some((sandbox) => directoryKey(sandbox) === key)
+  })?.id
 }
 
 function mergeSession(setStore: SetStoreFunction<State>, session: Session) {
@@ -204,7 +209,7 @@ export async function bootstrapDirectory(input: {
 }) {
   const loading = input.store.status !== "complete"
   const seededProject = projectID(input.directory, input.global.project)
-  const seededPath = input.global.path.directory === input.directory ? input.global.path : undefined
+  const seededPath = sameDirectory(input.global.path.directory, input.directory) ? input.global.path : undefined
   if (seededProject) input.setStore("project", seededProject)
   if (seededPath) input.setStore("path", seededPath)
   if (input.store.provider.all.length === 0 && input.global.provider.all.length > 0) {
