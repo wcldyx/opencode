@@ -599,7 +599,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                 {edit() === "new" ? language.t("dialog.directory.action.newFolder") : language.t("common.rename")}
               </div>
               <TextField
-                autofocus
+                autofocus={platform.platform !== "mobile"}
                 value={draft()}
                 onChange={setDraft}
                 placeholder={

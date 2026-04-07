@@ -70,7 +70,7 @@ const seen = () => {
   }
 }
 
-const mark = () => {
+const note = () => {
   if (typeof localStorage === "undefined") return
   try {
     localStorage.setItem(key, `${Date.now()}`)
@@ -143,7 +143,7 @@ void backgroundStatus().then((info) => {
     "检测到 iQOO/vivo 省电限制，后台任务通知可能失效。现在打开电池优化设置并允许 OpenCode 后台运行吗？",
   )
   if (go) void openPowerSettings()
-  mark()
+  note()
 })
 
 render(

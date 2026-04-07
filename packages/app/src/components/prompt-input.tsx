@@ -410,6 +410,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setStore("applyingHistory", true)
     applyHistoryComments(entry.comments)
     prompt.set(p, length)
+    if (platform.platform === "mobile") {
+      setStore("applyingHistory", false)
+      queueScroll()
+      return
+    }
     requestAnimationFrame(() => {
       editorRef.focus()
       setCursorPosition(editorRef, length)
@@ -493,6 +498,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const focusEditorEnd = () => {
+    if (platform.platform === "mobile") return
     requestAnimationFrame(() => {
       editorRef.focus()
       const range = document.createRange()
@@ -510,7 +516,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return getCursorPosition(editorRef)
   }
 
+  const active = () => {
+    const el = document.activeElement
+    return el === editorRef || (el instanceof Node && editorRef.contains(el))
+  }
+
   const restoreFocus = () => {
+    if (platform.platform === "mobile") return
     requestAnimationFrame(() => {
       const cursor = prompt.cursor() ?? promptLength(prompt.current())
       editorRef.focus()
@@ -522,6 +534,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const renderEditorWithCursor = (parts: Prompt) => {
     const cursor = currentCursor()
     renderEditor(parts)
+    if (platform.platform === "mobile" && !active()) return
     if (cursor !== null) setCursorPosition(editorRef, cursor)
   }
 
@@ -924,6 +937,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!selection) return false
 
     if (selection.rangeCount === 0 || !editorRef.contains(selection.anchorNode)) {
+      if (platform.platform === "mobile") return false
       editorRef.focus()
       const cursor = prompt.cursor() ?? promptLength(prompt.current())
       setCursorPosition(editorRef, cursor)
@@ -1034,6 +1048,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         setStore("historyIndex", -1)
         setStore("savedPrompt", null)
         prompt.set(edit.prompt, promptLength(edit.prompt))
+        if (platform.platform === "mobile") {
+          props.onEditLoaded?.()
+          return
+        }
         requestAnimationFrame(() => {
           editorRef.focus()
           setCursorPosition(editorRef, promptLength(edit.prompt))
@@ -1066,6 +1084,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     isDialogActive: () => !!dialog.active,
     setDraggingType: (type) => setStore("draggingType", type),
     focusEditor: () => {
+      if (platform.platform === "mobile") return
       editorRef.focus()
       setCursorPosition(editorRef, promptLength(prompt.current()))
     },

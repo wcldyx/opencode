@@ -363,10 +363,19 @@ export default function Page() {
 
   createEffect(
     on(
-      () => params.id,
-      (id, prev) => {
-        if (!id) return
-        if (prev) return
+      () => ({ dir: params.dir, id: params.id }),
+      (next, prev) => {
+        if (!prev) return
+        if (next.dir === prev.dir && next.id === prev.id) return
+
+        if (platform.platform === "mobile") {
+          requestAnimationFrame(() => {
+            const el = document.activeElement
+            if (!(el instanceof HTMLElement)) return
+            if (!el.isContentEditable && !/^(INPUT|TEXTAREA)$/i.test(el.tagName)) return
+            el.blur()
+          })
+        }
 
         const pending = layout.handoff.tabs()
         if (!pending) return
@@ -375,9 +384,9 @@ export default function Page() {
           return
         }
 
-        if (pending.id !== id) return
+        if (pending.id !== next.id) return
         layout.handoff.clearTabs()
-        if (pending.dir !== (params.dir ?? "")) return
+        if (pending.dir !== (next.dir ?? "")) return
 
         const from = workspaceTabs().tabs()
         if (from.all.length === 0 && !from.active) return

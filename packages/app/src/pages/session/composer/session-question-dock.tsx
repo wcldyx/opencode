@@ -7,6 +7,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { showToast } from "@opencode-ai/ui/toast"
 import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useSDK } from "@/context/sdk"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
@@ -61,6 +62,7 @@ function Option(props: {
 export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit: () => void }> = (props) => {
   const sdk = useSDK()
   const language = useLanguage()
+  const platform = usePlatform()
 
   const questions = createMemo(() => props.request.questions)
   const total = createMemo(() => questions().length)
@@ -152,6 +154,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   }
 
   const focus = (i: number) => {
+    if (platform.platform === "mobile") return
     const next = clamp(i)
     setStore("focus", next)
     if (store.editing) return
@@ -164,6 +167,8 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   }
 
   onMount(() => {
+    if (platform.platform === "mobile") return
+
     let raf: number | undefined
     const update = () => {
       if (raf !== undefined) cancelAnimationFrame(raf)
@@ -377,6 +382,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
   }
 
   const focusCustom = (el: HTMLTextAreaElement) => {
+    if (platform.platform === "mobile") return
     setTimeout(() => {
       el.focus()
       resizeInput(el)
