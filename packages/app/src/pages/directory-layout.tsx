@@ -8,19 +8,21 @@ import { LocalProvider } from "@/context/local"
 import { SDKProvider } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { decode64 } from "@/utils/base64"
+import { normalizeDirectory } from "@/utils/worktree"
 
 function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   const location = useLocation()
   const navigate = useNavigate()
   const params = useParams()
   const sync = useSync()
-  const slug = createMemo(() => base64Encode(props.directory))
+  const directory = createMemo(() => normalizeDirectory(props.directory))
+  const slug = createMemo(() => base64Encode(directory()))
 
   createEffect(() => {
     const next = sync.data.path.directory
-    if (!next || next === props.directory) return
-    const path = location.pathname.slice(slug().length + 1)
-    navigate(`/${base64Encode(next)}${path}${location.search}${location.hash}`, { replace: true })
+    if (!next || normalizeDirectory(next) === directory()) return
+    const path = location.pathname.slice((params.dir?.length ?? 0) + 1)
+    navigate(`/${base64Encode(normalizeDirectory(next))}${path}${location.search}${location.hash}`, { replace: true })
   })
 
   createEffect(() => {
@@ -32,7 +34,7 @@ function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   return (
     <DataProvider
       data={sync.data}
-      directory={props.directory}
+      directory={directory()}
       onNavigateToSession={(sessionID: string) => navigate(`/${slug()}/session/${sessionID}`)}
       onSessionHref={(sessionID: string) => `/${slug()}/session/${sessionID}`}
     >
@@ -49,7 +51,7 @@ export default function Layout(props: ParentProps) {
 
   const resolved = createMemo(() => {
     if (!params.dir) return ""
-    return decode64(params.dir) ?? ""
+    return normalizeDirectory(decode64(params.dir) ?? "")
   })
 
   createEffect(() => {

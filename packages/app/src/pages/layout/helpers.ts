@@ -1,5 +1,6 @@
 import { getFilename } from "@opencode-ai/util/path"
 import { type Session } from "@opencode-ai/sdk/v2/client"
+import { normalizeDirectory } from "@/utils/worktree"
 
 type SessionStore = {
   session?: Session[]
@@ -7,11 +8,7 @@ type SessionStore = {
 }
 
 export const workspaceKey = (directory: string) => {
-  const value = directory.replaceAll("\\", "/")
-  const drive = value.match(/^([A-Za-z]:)\/+$/)
-  if (drive) return `${drive[1]}/`
-  if (/^\/+$/i.test(value)) return "/"
-  return value.replace(/\/+$/, "")
+  return normalizeDirectory(directory)
 }
 
 function sortSessions(now: number) {

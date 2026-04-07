@@ -1,6 +1,7 @@
 import { createRoot, getOwner, onCleanup, runWithOwner, type Owner } from "solid-js"
 import { createStore, type SetStoreFunction, type Store } from "solid-js/store"
 import { Persist, persisted } from "@/utils/persist"
+import { normalizeDirectory } from "@/utils/worktree"
 import type { VcsInfo } from "@opencode-ai/sdk/v2/client"
 import {
   DIR_IDLE_TTL_MS,
@@ -32,75 +33,82 @@ export function createChildStoreManager(input: {
   const ownerPins = new WeakMap<object, Set<string>>()
   const disposers = new Map<string, () => void>()
 
+  const norm = (directory: string) => normalizeDirectory(directory)
+
   const mark = (directory: string) => {
-    if (!directory) return
-    lifecycle.set(directory, { lastAccessAt: Date.now() })
-    runEviction(directory)
+    const dir = norm(directory)
+    if (!dir) return
+    lifecycle.set(dir, { lastAccessAt: Date.now() })
+    runEviction(dir)
   }
 
   const pin = (directory: string) => {
-    if (!directory) return
-    pins.set(directory, (pins.get(directory) ?? 0) + 1)
-    mark(directory)
+    const dir = norm(directory)
+    if (!dir) return
+    pins.set(dir, (pins.get(dir) ?? 0) + 1)
+    mark(dir)
   }
 
   const unpin = (directory: string) => {
-    if (!directory) return
-    const next = (pins.get(directory) ?? 0) - 1
+    const dir = norm(directory)
+    if (!dir) return
+    const next = (pins.get(dir) ?? 0) - 1
     if (next > 0) {
-      pins.set(directory, next)
+      pins.set(dir, next)
       return
     }
-    pins.delete(directory)
+    pins.delete(dir)
     runEviction()
   }
 
-  const pinned = (directory: string) => (pins.get(directory) ?? 0) > 0
+  const pinned = (directory: string) => (pins.get(norm(directory)) ?? 0) > 0
 
   const pinForOwner = (directory: string) => {
     const current = getOwner()
     if (!current) return
     if (current === input.owner) return
+    const dir = norm(directory)
     const key = current as object
     const set = ownerPins.get(key)
-    if (set?.has(directory)) return
-    if (set) set.add(directory)
-    if (!set) ownerPins.set(key, new Set([directory]))
-    pin(directory)
+    if (set?.has(dir)) return
+    if (set) set.add(dir)
+    if (!set) ownerPins.set(key, new Set([dir]))
+    pin(dir)
     onCleanup(() => {
       const set = ownerPins.get(key)
       if (set) {
-        set.delete(directory)
+        set.delete(dir)
         if (set.size === 0) ownerPins.delete(key)
       }
-      unpin(directory)
+      unpin(dir)
     })
   }
 
   function disposeDirectory(directory: string) {
+    const dir = norm(directory)
     if (
       !canDisposeDirectory({
-        directory,
-        hasStore: !!children[directory],
-        pinned: pinned(directory),
-        booting: input.isBooting(directory),
-        loadingSessions: input.isLoadingSessions(directory),
+        directory: dir,
+        hasStore: !!children[dir],
+        pinned: pinned(dir),
+        booting: input.isBooting(dir),
+        loadingSessions: input.isLoadingSessions(dir),
       })
     ) {
       return false
     }
 
-    vcsCache.delete(directory)
-    metaCache.delete(directory)
-    iconCache.delete(directory)
-    lifecycle.delete(directory)
-    const dispose = disposers.get(directory)
+    vcsCache.delete(dir)
+    metaCache.delete(dir)
+    iconCache.delete(dir)
+    lifecycle.delete(dir)
+    const dispose = disposers.get(dir)
     if (dispose) {
       dispose()
-      disposers.delete(directory)
+      disposers.delete(dir)
     }
-    delete children[directory]
-    input.onDispose(directory)
+    delete children[dir]
+    input.onDispose(dir)
     return true
   }
 
@@ -122,35 +130,36 @@ export function createChildStoreManager(input: {
   }
 
   function ensureChild(directory: string) {
-    if (!directory) console.error("No directory provided")
-    if (!children[directory]) {
+    const dir = norm(directory)
+    if (!dir) console.error("No directory provided")
+    if (!children[dir]) {
       const vcs = runWithOwner(input.owner, () =>
         persisted(
-          Persist.workspace(directory, "vcs", ["vcs.v1"]),
+          Persist.workspace(dir, "vcs", ["vcs.v1"]),
           createStore({ value: undefined as VcsInfo | undefined }),
         ),
       )
       if (!vcs) throw new Error(input.translate("error.childStore.persistedCacheCreateFailed"))
       const vcsStore = vcs[0]
-      vcsCache.set(directory, { store: vcsStore, setStore: vcs[1], ready: vcs[3] })
+      vcsCache.set(dir, { store: vcsStore, setStore: vcs[1], ready: vcs[3] })
 
       const meta = runWithOwner(input.owner, () =>
         persisted(
-          Persist.workspace(directory, "project", ["project.v1"]),
+          Persist.workspace(dir, "project", ["project.v1"]),
           createStore({ value: undefined as ProjectMeta | undefined }),
         ),
       )
       if (!meta) throw new Error(input.translate("error.childStore.persistedProjectMetadataCreateFailed"))
-      metaCache.set(directory, { store: meta[0], setStore: meta[1], ready: meta[3] })
+      metaCache.set(dir, { store: meta[0], setStore: meta[1], ready: meta[3] })
 
       const icon = runWithOwner(input.owner, () =>
         persisted(
-          Persist.workspace(directory, "icon", ["icon.v1"]),
+          Persist.workspace(dir, "icon", ["icon.v1"]),
           createStore({ value: undefined as string | undefined }),
         ),
       )
       if (!icon) throw new Error(input.translate("error.childStore.persistedProjectIconCreateFailed"))
-      iconCache.set(directory, { store: icon[0], setStore: icon[1], ready: icon[3] })
+      iconCache.set(dir, { store: icon[0], setStore: icon[1], ready: icon[3] })
 
       const init = () =>
         createRoot((dispose) => {
@@ -183,13 +192,13 @@ export function createChildStoreManager(input: {
             message: {},
             part: {},
           })
-          children[directory] = child
-          disposers.set(directory, dispose)
+          children[dir] = child
+          disposers.set(dir, dispose)
 
           const onPersistedInit = (init: Promise<string> | string | null, run: () => void) => {
             if (!(init instanceof Promise)) return
             void init.then(() => {
-              if (children[directory] !== child) return
+              if (children[dir] !== child) return
               run()
             })
           }
@@ -213,18 +222,19 @@ export function createChildStoreManager(input: {
 
       runWithOwner(input.owner, init)
     }
-    mark(directory)
-    const childStore = children[directory]
+    mark(dir)
+    const childStore = children[dir]
     if (!childStore) throw new Error(input.translate("error.childStore.storeCreateFailed"))
     return childStore
   }
 
   function child(directory: string, options: ChildOptions = {}) {
-    const childStore = ensureChild(directory)
-    pinForOwner(directory)
+    const dir = norm(directory)
+    const childStore = ensureChild(dir)
+    pinForOwner(dir)
     const shouldBootstrap = options.bootstrap ?? true
     if (shouldBootstrap && childStore[0].status === "loading") {
-      input.onBootstrap(directory)
+      input.onBootstrap(dir)
     }
     return childStore
   }
@@ -233,14 +243,15 @@ export function createChildStoreManager(input: {
     const childStore = ensureChild(directory)
     const shouldBootstrap = options.bootstrap ?? true
     if (shouldBootstrap && childStore[0].status === "loading") {
-      input.onBootstrap(directory)
+      input.onBootstrap(norm(directory))
     }
     return childStore
   }
 
   function projectMeta(directory: string, patch: ProjectMeta) {
-    const [store, setStore] = ensureChild(directory)
-    const cached = metaCache.get(directory)
+    const dir = norm(directory)
+    const [store, setStore] = ensureChild(dir)
+    const cached = metaCache.get(dir)
     if (!cached) return
     const previous = store.projectMeta ?? {}
     const icon = patch.icon ? { ...(previous.icon ?? {}), ...patch.icon } : previous.icon
@@ -256,8 +267,9 @@ export function createChildStoreManager(input: {
   }
 
   function projectIcon(directory: string, value: string | undefined) {
-    const [store, setStore] = ensureChild(directory)
-    const cached = iconCache.get(directory)
+    const dir = norm(directory)
+    const [store, setStore] = ensureChild(dir)
+    const cached = iconCache.get(dir)
     if (!cached) return
     if (store.icon === value) return
     cached.setStore("value", value)

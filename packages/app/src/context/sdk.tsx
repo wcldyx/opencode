@@ -3,6 +3,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { type Accessor, createEffect, createMemo, onCleanup } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
+import { normalizeDirectory } from "@/utils/worktree"
 
 type SDKEventMap = {
   [key in Event["type"]]: Extract<Event, { type: key }>
@@ -13,7 +14,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   init: (props: { directory: Accessor<string> }) => {
     const globalSDK = useGlobalSDK()
 
-    const directory = createMemo(props.directory)
+    const directory = createMemo(() => normalizeDirectory(props.directory()))
     const client = createMemo(() =>
       globalSDK.createClient({
         directory: directory(),

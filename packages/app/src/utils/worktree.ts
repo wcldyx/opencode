@@ -1,4 +1,14 @@
-const normalize = (directory: string) => directory.replace(/[\\/]+$/, "")
+export const normalizeDirectory = (directory: string) => {
+  const value = directory.replaceAll("\\", "/")
+  const drive = value.match(/^([A-Za-z]:)\/+$/)
+  if (drive) return `${drive[1].toUpperCase()}/`
+  if (/^\/+$/i.test(value)) return "/"
+
+  const next = value.replace(/\/+$/, "")
+  const path = next.match(/^([A-Za-z]):(\/.*)?$/)
+  if (path) return `${path[1].toUpperCase()}:${path[2] ?? ""}`
+  return next
+}
 
 type State =
   | {
@@ -31,16 +41,16 @@ function deferred() {
 
 export const Worktree = {
   get(directory: string) {
-    return state.get(normalize(directory))
+    return state.get(normalizeDirectory(directory))
   },
   pending(directory: string) {
-    const key = normalize(directory)
+    const key = normalizeDirectory(directory)
     const current = state.get(key)
     if (current && current.status !== "pending") return
     state.set(key, { status: "pending" })
   },
   ready(directory: string) {
-    const key = normalize(directory)
+    const key = normalizeDirectory(directory)
     const next = { status: "ready" } as const
     state.set(key, next)
     const waiter = waiters.get(key)
@@ -49,7 +59,7 @@ export const Worktree = {
     waiter.resolve(next)
   },
   failed(directory: string, message: string) {
-    const key = normalize(directory)
+    const key = normalizeDirectory(directory)
     const next = { status: "failed", message } as const
     state.set(key, next)
     const waiter = waiters.get(key)
@@ -58,7 +68,7 @@ export const Worktree = {
     waiter.resolve(next)
   },
   wait(directory: string) {
-    const key = normalize(directory)
+    const key = normalizeDirectory(directory)
     const current = state.get(key)
     if (current && current.status !== "pending") return Promise.resolve(current)
 

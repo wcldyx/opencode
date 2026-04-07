@@ -11,6 +11,13 @@ describe("Worktree", () => {
     expect(Worktree.get(key)).toEqual({ status: "ready" })
   })
 
+  test("normalizes windows path separators and drive casing", () => {
+    const key = "C:/tmp/opencode-worktree"
+    Worktree.ready("c:\\tmp\\opencode-worktree\\")
+
+    expect(Worktree.get(key)).toEqual({ status: "ready" })
+  })
+
   test("pending does not overwrite a terminal state", () => {
     const key = dir("pending")
     Worktree.failed(key, "boom")
