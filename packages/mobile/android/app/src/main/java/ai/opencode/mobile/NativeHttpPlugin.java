@@ -1,6 +1,7 @@
 package ai.opencode.mobile;
 
 import android.util.Base64;
+import android.util.Log;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -20,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @CapacitorPlugin(name = "NativeHttp")
 public class NativeHttpPlugin extends Plugin {
+  private static final String TAG = "OpenCode/NativeHttp";
   private final ConcurrentHashMap<String, HttpURLConnection> active = new ConcurrentHashMap<>();
 
   @PluginMethod
@@ -58,10 +60,13 @@ public class NativeHttpPlugin extends Plugin {
             notifyListeners("nativeHttpChunk", chunk);
           }
 
+          src.close();
+
           JSObject done = new JSObject();
           done.put("id", id);
           notifyListeners("nativeHttpDone", done);
         } catch (Exception err) {
+          Log.e(TAG, "stream error id=" + id + " message=" + (err.getMessage() == null ? "native stream failed" : err.getMessage()), err);
           JSObject fail = new JSObject();
           fail.put("id", id);
           fail.put("message", err.getMessage() == null ? "native stream failed" : err.getMessage());
@@ -103,6 +108,7 @@ public class NativeHttpPlugin extends Plugin {
           res.put("data", body);
           call.resolve(res);
         } catch (Exception err) {
+          Log.e(TAG, "request error url=" + opt(call.getString("url"), "") + " message=" + err.getMessage(), err);
           call.reject(err.getMessage(), err);
         } finally {
           if (conn != null) conn.disconnect();
@@ -116,10 +122,18 @@ public class NativeHttpPlugin extends Plugin {
     if (url == null) throw new IllegalArgumentException("Missing url");
     HttpURLConnection req = (HttpURLConnection) new URL(url).openConnection();
     String method = call.getString("method");
+    boolean stream = isStream(url);
     req.setRequestMethod(method == null ? "GET" : method);
     req.setInstanceFollowRedirects(true);
     req.setConnectTimeout(30_000);
-    req.setReadTimeout(isStream(url) ? 0 : 30_000);
+    req.setReadTimeout(stream ? 0 : 30_000);
+
+    // Keep SSE/event streams as plain text. HttpURLConnection does not reliably
+    // transparently decode gzip, which can leave the JS SSE parser reading raw bytes.
+    if (stream) {
+      req.setRequestProperty("Accept-Encoding", "identity");
+      req.setRequestProperty("Cache-Control", "no-cache");
+    }
 
     JSObject headers = call.getObject("headers");
     if (headers != null) {
@@ -174,5 +188,9 @@ public class NativeHttpPlugin extends Plugin {
 
   private boolean isStream(String url) {
     return url.contains("/event") || url.contains("/sync-event");
+  }
+
+  private String opt(String value, String fallback) {
+    return value == null ? fallback : value;
   }
 }

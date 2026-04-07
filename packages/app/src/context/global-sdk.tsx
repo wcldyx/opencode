@@ -5,6 +5,7 @@ import { makeEventListener } from "@solid-primitives/event-listener"
 import { batch, onCleanup, onMount } from "solid-js"
 import z from "zod"
 import { createSdkForServer } from "@/utils/server"
+import { directoryKey } from "@/utils/directory"
 import { useLanguage } from "./language"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
@@ -145,7 +146,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             for await (const event of events.stream) {
               resetHeartbeat()
               streamErrorLogged = false
-              const directory = event.directory ?? "global"
+              const directory = event.directory ? directoryKey(event.directory) : "global"
               const payload = event.payload
               const k = key(directory, payload)
               if (k) {

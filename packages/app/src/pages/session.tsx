@@ -65,6 +65,7 @@ import { same } from "@/utils/same"
 import { formatServerError } from "@/utils/server-errors"
 
 const emptyUserMessages: UserMessage[] = []
+
 type FollowupItem = FollowupDraft & { id: string }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
 const emptyFollowups: FollowupItem[] = []
@@ -498,8 +499,7 @@ export default function Page() {
   const visibleUserMessages = createMemo(
     () => {
       const revert = revertMessageID()
-      if (!revert) return userMessages()
-      return userMessages().filter((m) => m.id < revert)
+      return !revert ? userMessages() : userMessages().filter((m) => m.id < revert)
     },
     emptyUserMessages,
     {
@@ -1775,7 +1775,13 @@ export default function Page() {
   }
 
   const halt = (sessionID: string) =>
-    busy(sessionID) ? sdk.client.session.abort({ sessionID }).catch(() => {}) : Promise.resolve()
+    busy(sessionID)
+      ? (() => {
+          const dir = sync.session.get(sessionID)?.directory ?? sdk.directory
+          const client = dir === sdk.directory ? sdk.client : sdk.createClient({ directory: dir, throwOnError: true })
+          return client.session.abort({ sessionID }).catch(() => {})
+        })()
+      : Promise.resolve()
 
   const revertMutation = useMutation(() => ({
     mutationFn: async (input: { sessionID: string; messageID: string }) => {

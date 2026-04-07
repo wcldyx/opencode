@@ -4,6 +4,7 @@ import { base64Encode } from "@opencode-ai/util/encode"
 import { Binary } from "@opencode-ai/util/binary"
 import { useNavigate, useParams } from "@solidjs/router"
 import type { Accessor } from "solid-js"
+import { produce } from "solid-js/store"
 import type { FileSelection } from "@/context/file"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
@@ -174,7 +175,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
 }
 
 type PromptSubmitInput = {
-  info: Accessor<{ id: string } | undefined>
+  info: Accessor<{ id: string; directory?: string } | undefined>
   imageAttachments: Accessor<ImageAttachmentPart[]>
   commentCount: Accessor<number>
   autoAccept: Accessor<boolean>
@@ -230,9 +231,14 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const sessionID = params.id
     if (!sessionID) return Promise.resolve()
 
+    const session = input.info()
+    const dir = session?.directory ?? sdk.directory
+    const client = dir === sdk.directory ? sdk.client : sdk.createClient({ directory: dir, throwOnError: true })
+
     globalSync.todo.set(sessionID, [])
-    const [, setStore] = globalSync.child(sdk.directory)
+    const [, setStore] = globalSync.child(dir)
     setStore("todo", sessionID, [])
+    setStore("session_status", sessionID, { type: "idle" })
 
     input.onAbort?.()
 
@@ -244,7 +250,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       void platform.untrackSession?.(sessionID)
       return Promise.resolve()
     }
-    return sdk.client.session
+    return client.session
       .abort({
         sessionID,
       })
@@ -272,6 +278,23 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     for (const item of items) {
       prompt.context.remove(item.key)
     }
+  }
+
+  const prune = (dir: string, sessionID: string, revertID: string) => {
+    const [, setStore] = globalSync.child(dir)
+    setStore(
+      produce((draft) => {
+        const msgs = draft.message[sessionID]
+        if (msgs) {
+          const drop = msgs.filter((item) => item.id >= revertID).map((item) => item.id)
+          draft.message[sessionID] = msgs.filter((item) => item.id < revertID)
+          for (const id of drop) delete draft.part[id]
+        }
+
+        const idx = draft.session.findIndex((item) => item.id === sessionID)
+        if (idx >= 0) draft.session[idx] = { ...draft.session[idx], revert: undefined }
+      }),
+    )
   }
 
   const clearContext = () => {
@@ -506,6 +529,14 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     const commentItems = context.filter((item) => item.type === "file" && !!item.comment?.trim())
     const messageID = Identifier.ascending("message")
+    const revertID =
+      "revert" in session &&
+      session.revert &&
+      typeof session.revert === "object" &&
+      "messageID" in session.revert &&
+      typeof session.revert.messageID === "string"
+        ? session.revert.messageID
+        : undefined
 
     const removeOptimisticMessage = () => {
       sync.session.optimistic.remove({
@@ -516,6 +547,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     }
 
     removeCommentItems(commentItems)
+    if (revertID) prune(sessionDirectory, session.id, revertID)
     clearInput()
 
     const waitForWorktree = async () => {

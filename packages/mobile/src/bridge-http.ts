@@ -25,25 +25,45 @@ export async function nativeFetch(input: RequestInfo | URL, init?: RequestInit) 
     let controller: ReadableStreamDefaultController<Uint8Array> | undefined
     let dead = false
     let off: () => Promise<void> = async () => undefined
+    let tail = Promise.resolve()
+    const push = (fn: () => void | Promise<void>) => {
+      tail = tail.then(fn).catch(() => undefined)
+      return tail
+    }
+    const seal = () => {
+      try {
+        controller?.close()
+      } catch {
+        return
+      }
+    }
     const halt = () => {
       if (dead) return
       dead = true
       void off().finally(() => {
+        seal()
         void nativeHttp.abort({ id }).catch(() => undefined)
       })
     }
     const [chunk, done, err] = await Promise.all([
       nativeHttp.addListener("nativeHttpChunk", (x) => {
         if (x.id !== id) return
-        controller?.enqueue(decode(x.chunk))
+        void push(() => {
+          if (dead) return
+          controller?.enqueue(decode(x.chunk))
+        })
       }),
       nativeHttp.addListener("nativeHttpDone", async (x) => {
         if (x.id !== id) return
-        await close()
+        void push(async () => {
+          await close()
+        })
       }),
       nativeHttp.addListener("nativeHttpError", async (x) => {
         if (x.id !== id) return
-        await fail(new Error(x.message))
+        void push(async () => {
+          await fail(new Error(x.message))
+        })
       }),
     ])
 
@@ -57,14 +77,20 @@ export async function nativeFetch(input: RequestInfo | URL, init?: RequestInit) 
     }
 
     const close = async () => {
-      if (dead) return
+      if (dead) {
+        seal()
+        return
+      }
       dead = true
       await off()
       controller?.close()
     }
 
     const fail = async (e: Error) => {
-      if (dead) return
+      if (dead) {
+        seal()
+        return
+      }
       dead = true
       await off()
       controller?.error(e)
@@ -108,7 +134,6 @@ export async function nativeFetch(input: RequestInfo | URL, init?: RequestInit) 
     return new Response(body, { status: meta.status, headers })
   }
 
-  console.debug("[mobile] nativeFetch", req.method, req.url)
   const res = await nativeHttp.request({
     url: req.url,
     method: req.method,
