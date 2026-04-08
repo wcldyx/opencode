@@ -1,4 +1,4 @@
-import type { FileDiff, Project, UserMessage } from "@opencode-ai/sdk/v2"
+import type { Project, UserMessage, VcsFileDiff } from "@opencode-ai/sdk/v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useMutation } from "@tanstack/solid-query"
 import {
@@ -70,7 +70,7 @@ type FollowupItem = FollowupDraft & { id: string }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
 const emptyFollowups: FollowupItem[] = []
 
-type ChangeMode = "git" | "branch" | "session" | "turn"
+type ChangeMode = "git" | "branch" | "turn"
 type VcsMode = "git" | "branch"
 
 type SessionHistoryWindowInput = {
@@ -441,18 +441,9 @@ export default function Page() {
   }
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo<FileDiff[]>(() => {
-    if (!params.id) return []
-    const list = sync.data.session_diff[params.id]
-    if (!Array.isArray(list)) return []
-    return list
-  })
-  const sessionCount = createMemo(() => {
-    if (!params.id) return 0
-    const list = sync.data.session_diff[params.id]
-    if (Array.isArray(list)) return list.length
-    return info()?.summary?.files ?? 0
-  })
+  const isChildSession = createMemo(() => !!info()?.parentID)
+  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
+  const sessionCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
   const hasSessionReview = createMemo(() => sessionCount() > 0)
   const canReview = createMemo(() => !!sync.project)
   const reviewTab = createMemo(() => isDesktop())
@@ -484,13 +475,6 @@ export default function Page() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
-  const diffsReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
-    if (!hasSessionReview()) return true
-    return sync.data.session_diff[id] !== undefined
-  })
-
   const userMessages = createMemo(
     () => messages().filter((m) => m.role === "user") as UserMessage[],
     emptyUserMessages,
@@ -547,10 +531,19 @@ export default function Page() {
     deferRender: false,
   })
 
-  const [vcs, setVcs] = createStore({
+  const [vcs, setVcs] = createStore<{
     diff: {
-      git: [] as FileDiff[],
-      branch: [] as FileDiff[],
+      git: VcsFileDiff[]
+      branch: VcsFileDiff[]
+    }
+    ready: {
+      git: boolean
+      branch: boolean
+    }
+  }>({
+    diff: {
+      git: [] as VcsFileDiff[],
+      branch: [] as VcsFileDiff[],
     },
     ready: {
       git: false,
@@ -667,15 +660,8 @@ export default function Page() {
     return open
   }, desktopReviewOpen())
 
-  const turnDiffs = createMemo<FileDiff[]>(() => {
-    const diffs = lastUserMessage()?.summary?.diffs
-    if (!Array.isArray(diffs)) return []
-    return diffs
-  })
-  const diffList = (value: unknown): FileDiff[] => {
-    if (!Array.isArray(value)) return []
-    return value as FileDiff[]
-  }
+  const turnDiffs = createMemo(() => lastUserMessage()?.summary?.diffs ?? [])
+  const nogit = createMemo(() => !!sync.project && sync.project.vcs !== "git")
   const changesOptions = createMemo<ChangeMode[]>(() => {
     const list: ChangeMode[] = []
     if (sync.project?.vcs === "git") list.push("git")
@@ -687,39 +673,33 @@ export default function Page() {
     ) {
       list.push("branch")
     }
-    list.push("session", "turn")
+    list.push("turn")
     return list
   })
   const vcsMode = createMemo<VcsMode | undefined>(() => {
     if (store.changes === "git" || store.changes === "branch") return store.changes
   })
   const reviewDiffs = createMemo(() => {
-    if (store.changes === "git") return diffList(vcs.diff.git)
-    if (store.changes === "branch") return diffList(vcs.diff.branch)
-    if (store.changes === "session") return diffList(diffs())
+    if (store.changes === "git") return vcs.diff.git
+    if (store.changes === "branch") return vcs.diff.branch
     return turnDiffs()
   })
   const reviewCount = createMemo(() => {
-    if (store.changes === "git") return reviewDiffs().length
-    if (store.changes === "branch") return reviewDiffs().length
-    if (store.changes === "session") return sessionCount()
-    return reviewDiffs().length
+    if (store.changes === "git") return vcs.diff.git.length
+    if (store.changes === "branch") return vcs.diff.branch.length
+    return turnDiffs().length
   })
   const hasReview = createMemo(() => reviewCount() > 0)
   const modeCount = (mode: ChangeMode) => {
-    if (mode === "git") return diffList(vcs.diff.git).length
-    if (mode === "branch") return diffList(vcs.diff.branch).length
-    if (mode === "session") return sessionCount()
+    if (mode === "git") return vcs.diff.git.length
+    if (mode === "branch") return vcs.diff.branch.length
     return turnDiffs().length
   }
-  const anyReviewCount = createMemo(() =>
-    Math.max(modeCount("git"), modeCount("branch"), modeCount("session"), modeCount("turn")),
-  )
+  const anyReviewCount = createMemo(() => Math.max(modeCount("git"), modeCount("branch"), modeCount("turn")))
   const hasAnyReview = createMemo(() => anyReviewCount() > 0)
   const reviewReady = createMemo(() => {
     if (store.changes === "git") return vcs.ready.git
     if (store.changes === "branch") return vcs.ready.branch
-    if (store.changes === "session") return !hasSessionReview() || diffsReady()
     return true
   })
 
@@ -786,13 +766,6 @@ export default function Page() {
     autoScroll.pause()
     scrollToMessage(msgs[targetIndex], "auto")
   }
-
-  const sessionEmptyKey = createMemo(() => {
-    const project = sync.project
-    if (project && !project.vcs) return "session.review.noVcs"
-    if (sync.data.config.snapshot === false) return "session.review.noSnapshot"
-    return "session.review.empty"
-  })
 
   function upsert(next: Project) {
     const list = globalSync.data.project
@@ -1099,6 +1072,7 @@ export default function Page() {
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
       if (composer.blocked()) return
       if (platform.platform === "mobile") return
+      if (isChildSession()) return
       inputRef?.focus()
     }
   }
@@ -1108,7 +1082,7 @@ export default function Page() {
   createEffect(() => {
     if (!mobileChanges()) return
     if (modeCount(store.changes) > 0) return
-    const next = (["session", "turn", "git", "branch"] as ChangeMode[]).find((mode) => modeCount(mode) > 0)
+    const next = (["turn", "git", "branch"] as ChangeMode[]).find((mode) => modeCount(mode) > 0)
     if (!next) return
     if (next === store.changes) return
     setStore("changes", next)
@@ -1178,6 +1152,7 @@ export default function Page() {
 
   const focusInput = () => {
     if (platform.platform === "mobile") return
+    if (isChildSession()) return
     inputRef?.focus()
   }
 
@@ -1204,7 +1179,6 @@ export default function Page() {
     const label = (option: ChangeMode) => {
       if (option === "git") return language.t("ui.sessionReview.title.git")
       if (option === "branch") return language.t("ui.sessionReview.title.branch")
-      if (option === "session") return language.t("ui.sessionReview.title")
       return language.t("ui.sessionReview.title.lastTurn")
     }
 
@@ -1227,11 +1201,26 @@ export default function Page() {
     </div>
   )
 
+  const createGit = (input: { emptyClass: string }) => (
+    <div class={input.emptyClass}>
+      <div class="flex flex-col gap-3">
+        <div class="text-14-medium text-text-strong">{language.t("session.review.noVcs.createGit.title")}</div>
+        <div class="text-14-regular text-text-base max-w-md" style={{ "line-height": "var(--line-height-normal)" }}>
+          {language.t("session.review.noVcs.createGit.description")}
+        </div>
+      </div>
+      <Button size="large" disabled={gitMutation.isPending} onClick={initGit}>
+        {gitMutation.isPending
+          ? language.t("session.review.noVcs.createGit.actionLoading")
+          : language.t("session.review.noVcs.createGit.action")}
+      </Button>
+    </div>
+  )
+
   const reviewEmptyText = createMemo(() => {
     if (store.changes === "git") return language.t("session.review.noUncommittedChanges")
     if (store.changes === "branch") return language.t("session.review.noBranchChanges")
-    if (store.changes === "turn") return language.t("session.review.noChanges")
-    return language.t(sessionEmptyKey())
+    return language.t("session.review.noChanges")
   })
 
   const reviewEmpty = (input: { loadingClass: string; emptyClass: string }) => {
@@ -1241,29 +1230,8 @@ export default function Page() {
     }
 
     if (store.changes === "turn") {
+      if (nogit()) return createGit(input)
       return empty(reviewEmptyText())
-    }
-
-    if (hasSessionReview() && !diffsReady()) {
-      return <div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>
-    }
-
-    if (sessionEmptyKey() === "session.review.noVcs") {
-      return (
-        <div class={input.emptyClass}>
-          <div class="flex flex-col gap-3">
-            <div class="text-14-medium text-text-strong">{language.t("session.review.noVcs.createGit.title")}</div>
-            <div class="text-14-regular text-text-base max-w-md" style={{ "line-height": "var(--line-height-normal)" }}>
-              {language.t("session.review.noVcs.createGit.description")}
-            </div>
-          </div>
-          <Button size="large" disabled={gitMutation.isPending} onClick={initGit}>
-            {gitMutation.isPending
-              ? language.t("session.review.noVcs.createGit.actionLoading")
-              : language.t("session.review.noVcs.createGit.action")}
-          </Button>
-        </div>
-      )
     }
 
     return (
@@ -1712,7 +1680,7 @@ export default function Page() {
   const queueEnabled = createMemo(() => {
     const id = params.id
     if (!id) return false
-    return settings.general.followup() === "queue" && busy(id) && !composer.blocked()
+    return settings.general.followup() === "queue" && busy(id) && !composer.blocked() && !isChildSession()
   })
 
   const followupText = (item: FollowupDraft) => {
@@ -1744,6 +1712,7 @@ export default function Page() {
   const followupDock = createMemo(() => queuedFollowups().map((item) => ({ id: item.id, text: followupText(item) })))
 
   const sendFollowup = (sessionID: string, id: string, opts?: { manual?: boolean }) => {
+    if (sync.session.get(sessionID)?.parentID) return Promise.resolve()
     const item = (followup.items[sessionID] ?? []).find((entry) => entry.id === id)
     if (!item) return Promise.resolve()
     if (followupBusy(sessionID)) return Promise.resolve()
@@ -1880,6 +1849,7 @@ export default function Page() {
     if (followupBusy(sessionID)) return
     if (followup.failed[sessionID] === item.id) return
     if (followup.paused[sessionID]) return
+    if (isChildSession()) return
     if (composer.blocked()) return
     if (busy(sessionID)) return
 
@@ -2061,7 +2031,7 @@ export default function Page() {
             }}
             onResponseSubmit={resumeScroll}
             followup={
-              params.id
+              params.id && !isChildSession()
                 ? {
                     queue: queueEnabled,
                     items: followupDock(),
