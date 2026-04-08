@@ -51,7 +51,7 @@ export function SessionSidePanel(props: {
   const fileOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
   const open = createMemo(() => reviewOpen() || fileOpen())
   const reviewTab = createMemo(() => isDesktop())
-  const diffs = createMemo<FileDiff[]>(() => {
+  const diffs = createMemo(() => {
     const list = props.diffs()
     if (!Array.isArray(list)) return []
     return list
