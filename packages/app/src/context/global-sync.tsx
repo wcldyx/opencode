@@ -16,7 +16,7 @@ import { createContext, getOwner, onCleanup, onMount, type ParentProps, untrack,
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { Persist, persisted } from "@/utils/persist"
-import { directoryKey, sameDirectory } from "@/utils/directory"
+import { directoryKey, sameDirectory, toServerDirectory } from "@/utils/directory"
 import type { InitError } from "../pages/error"
 import { useGlobalSDK } from "./global-sdk"
 import { bootstrapDirectory, bootstrapGlobal, clearProviderRev } from "./global-sync/bootstrap"
@@ -179,7 +179,7 @@ function createGlobalSync() {
     const cached = sdkCache.get(directory)
     if (cached) return cached
     const sdk = globalSDK.createClient({
-      directory,
+      directory: toServerDirectory(directory),
       throwOnError: true,
     })
     sdkCache.set(directory, sdk)
@@ -194,7 +194,7 @@ function createGlobalSync() {
     children.pin(dir)
     const [store, setStore] = children.child(dir, { bootstrap: false })
     const path = store.path.directory
-    const target = path && sameDirectory(path, dir) ? path : dir
+    const target = toServerDirectory(path && sameDirectory(path, dir) ? path : path || dir)
     const meta = sessionMeta.get(dir)
     if (meta && meta.limit >= store.limit && meta.path === target) {
       const next = trimSessions(store.session, {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { directoryAliases, directoryKey, sameDirectory } from "./directory"
+import { directoryAliases, directoryKey, sameDirectory, toServerDirectory } from "./directory"
 
 describe("directoryKey", () => {
   test("normalizes windows separators, drive casing, and trailing slashes", () => {
@@ -20,6 +20,17 @@ describe("sameDirectory", () => {
 
   test("rejects different directories", () => {
     expect(sameDirectory("G:/mywork/a", "G:/mywork/b")).toBe(false)
+  })
+})
+
+describe("toServerDirectory", () => {
+  test("converts windows paths to backslash form", () => {
+    expect(toServerDirectory("g:/mywork/myclaw-2/")).toBe("G:\\mywork\\myclaw-2")
+    expect(toServerDirectory("G:\\mywork\\myclaw-2")).toBe("G:\\mywork\\myclaw-2")
+  })
+
+  test("keeps posix paths unchanged", () => {
+    expect(toServerDirectory("/tmp/demo")).toBe("/tmp/demo")
   })
 })
 

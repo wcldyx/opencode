@@ -23,6 +23,7 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { messageAgentColor } from "@/utils/agent"
 import { decode64 } from "@/utils/base64"
 import { Persist, persisted } from "@/utils/persist"
+import { sameDirectory } from "@/utils/directory"
 import { StatusPopover } from "../status-popover"
 
 const OPEN_APPS = [
@@ -142,7 +143,10 @@ export function SessionHeader() {
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return
-    return layout.projects.list().find((p) => p.worktree === directory || p.sandboxes?.includes(directory))
+    return layout
+      .projects
+      .list()
+      .find((p) => sameDirectory(p.worktree, directory) || p.sandboxes?.some((item) => sameDirectory(item, directory)))
   })
   const name = createMemo(() => {
     const current = project()

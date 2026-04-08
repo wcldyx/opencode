@@ -271,13 +271,13 @@ export default function Layout(props: ParentProps) {
   const hoverProjectData = createMemo(() => {
     const id = state.hoverProject
     if (!id) return
-    return layout.projects.list().find((project) => project.worktree === id)
+    return layout.projects.list().find((project) => workspaceKey(project.worktree) === workspaceKey(id))
   })
 
   const peekProject = createMemo(() => {
     const id = state.peek
     if (!id) return
-    return layout.projects.list().find((project) => project.worktree === id)
+    return layout.projects.list().find((project) => workspaceKey(project.worktree) === workspaceKey(id))
   })
 
   createEffect(() => {
@@ -602,7 +602,7 @@ export default function Layout(props: ParentProps) {
       if (!last) return
       await openProject(last, true)
     } else {
-      const next = list.find((project) => project.worktree === last) ?? list[0]
+      const next = list.find((project) => workspaceKey(project.worktree) === workspaceKey(last ?? "")) ?? list[0]
       if (!next) return
       await openProject(next.worktree, true)
     }
@@ -959,7 +959,7 @@ export default function Layout(props: ParentProps) {
     const current = currentProject()?.worktree
     const fallback = currentDir() ? projectRoot(currentDir()) : undefined
     const active = current ?? fallback
-    const index = active ? projects.findIndex((project) => project.worktree === active) : -1
+    const index = active ? projects.findIndex((project) => workspaceKey(project.worktree) === workspaceKey(active)) : -1
 
     const target =
       index === -1

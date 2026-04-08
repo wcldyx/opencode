@@ -8,7 +8,6 @@ import { LocalProvider } from "@/context/local"
 import { SDKProvider } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { decode64 } from "@/utils/base64"
-import { sameDirectory } from "@/utils/directory"
 
 function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   const location = useLocation()
@@ -20,7 +19,7 @@ function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
 
   createEffect(() => {
     const next = sync.data.path.directory
-    if (!next || sameDirectory(next, directory())) return
+    if (!next || next === directory()) return
     const path = location.pathname.slice((params.dir?.length ?? 0) + 1)
     navigate(`/${base64Encode(next)}${path}${location.search}${location.hash}`, { replace: true })
   })

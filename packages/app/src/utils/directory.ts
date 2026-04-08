@@ -16,8 +16,11 @@ export const sameDirectory = (a: string, b: string) => {
   return directoryKey(a) === directoryKey(b)
 }
 
-function isWindowsDir(dir: string) {
-  return /^[A-Za-z]:[\\/]/.test(dir)
+const isWindowsDir = (dir: string) => /^[A-Za-z]:[\\/]/.test(dir)
+
+export const toServerDirectory = (dir: string) => {
+  if (!isWindowsDir(dir)) return dir
+  return directoryKey(dir).replaceAll("/", "\\")
 }
 
 export const directoryAliases = (dir: string) => {

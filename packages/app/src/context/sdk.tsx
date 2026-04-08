@@ -3,7 +3,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { type Accessor, createEffect, createMemo, onCleanup } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
-import { directoryKey } from "@/utils/directory"
+import { directoryKey, toServerDirectory } from "@/utils/directory"
 
 type SDKEventMap = {
   [key in Event["type"]]: Extract<Event, { type: key }>
@@ -14,10 +14,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   init: (props: { directory: Accessor<string> }) => {
     const globalSDK = useGlobalSDK()
 
-    const directory = createMemo(() => directoryKey(props.directory()))
+    const key = createMemo(() => directoryKey(props.directory()))
+    const dir = createMemo(() => toServerDirectory(key()))
     const client = createMemo(() =>
       globalSDK.createClient({
-        directory: directory(),
+        directory: dir(),
         throwOnError: true,
       }),
     )
@@ -25,7 +26,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     const emitter = createGlobalEmitter<SDKEventMap>()
 
     createEffect(() => {
-      const unsub = globalSDK.event.on(directory(), (event) => {
+      const unsub = globalSDK.event.on(key(), (event) => {
         emitter.emit(event.type, event)
       })
       onCleanup(unsub)
@@ -33,7 +34,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     return {
       get directory() {
-        return directory()
+        return key()
       },
       get client() {
         return client()
@@ -43,7 +44,8 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         return globalSDK.url
       },
       createClient(opts: Parameters<typeof globalSDK.createClient>[0]) {
-        return globalSDK.createClient(opts)
+        const directory = typeof opts.directory === "string" ? toServerDirectory(directoryKey(opts.directory)) : opts.directory
+        return globalSDK.createClient({ ...opts, directory })
       },
     }
   },

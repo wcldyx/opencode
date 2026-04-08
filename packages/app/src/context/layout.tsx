@@ -430,7 +430,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       for (const project of globalSync.data.project) {
         const sandboxes = project.sandboxes ?? []
         for (const sandbox of sandboxes) {
-          map.set(sandbox, project.worktree)
+          map.set(directoryKey(sandbox), project.worktree)
         }
       }
       return map
@@ -447,11 +447,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const current = chain[chain.length - 1]
         if (!current) return directory
 
-        const next = map.get(current)
+        const next = map.get(directoryKey(current))
         if (!next) return current
 
-        if (visited.has(next)) return directory
-        visited.add(next)
+        const key = directoryKey(next)
+        if (visited.has(key)) return directory
+        visited.add(key)
         chain.push(next)
       }
 
