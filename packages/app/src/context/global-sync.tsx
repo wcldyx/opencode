@@ -16,6 +16,7 @@ import { createContext, getOwner, onCleanup, onMount, type ParentProps, untrack,
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { Persist, persisted } from "@/utils/persist"
+import { directoryKey, sameDirectory } from "@/utils/directory"
 import type { InitError } from "../pages/error"
 import { useGlobalSDK } from "./global-sdk"
 import { bootstrapDirectory, bootstrapGlobal, clearProviderRev } from "./global-sync/bootstrap"
@@ -29,7 +30,6 @@ import type { ProjectMeta } from "./global-sync/types"
 import { SESSION_RECENT_LIMIT } from "./global-sync/types"
 import { sanitizeProject } from "./global-sync/utils"
 import { formatServerError } from "@/utils/server-errors"
-import { directoryKey } from "@/utils/directory"
 
 type GlobalStore = {
   ready: boolean
@@ -54,7 +54,7 @@ function createGlobalSync() {
   const sdkCache = new Map<string, OpencodeClient>()
   const booting = new Map<string, Promise<void>>()
   const sessionLoads = new Map<string, Promise<void>>()
-  const sessionMeta = new Map<string, { limit: number }>()
+  const sessionMeta = new Map<string, { limit: number; path: string }>()
 
   const [projectCache, setProjectCache, projectInit] = persisted(
     Persist.global("globalSync.project", ["globalSync.project.v1"]),
@@ -187,13 +187,16 @@ function createGlobalSync() {
   }
 
   async function loadSessions(directory: string) {
-    const pending = sessionLoads.get(directory)
+    const dir = directoryKey(directory)
+    const pending = sessionLoads.get(dir)
     if (pending) return pending
 
-    children.pin(directory)
-    const [store, setStore] = children.child(directory, { bootstrap: false })
-    const meta = sessionMeta.get(directory)
-    if (meta && meta.limit >= store.limit) {
+    children.pin(dir)
+    const [store, setStore] = children.child(dir, { bootstrap: false })
+    const path = store.path.directory
+    const target = path && sameDirectory(path, dir) ? path : dir
+    const meta = sessionMeta.get(dir)
+    if (meta && meta.limit >= store.limit && meta.path === target) {
       const next = trimSessions(store.session, {
         limit: store.limit,
         permission: store.permission,
@@ -202,13 +205,13 @@ function createGlobalSync() {
         setStore("session", reconcile(next, { key: "id" }))
         cleanupDroppedSessionCaches(store, setStore, next, setSessionTodo)
       }
-      children.unpin(directory)
+      children.unpin(dir)
       return
     }
 
     const limit = Math.max(store.limit + SESSION_RECENT_LIMIT, SESSION_RECENT_LIMIT)
     const promise = loadRootSessionsWithFallback({
-      directory,
+      directory: target,
       limit,
       list: (query) => globalSDK.client.session.list(query),
     })
@@ -233,11 +236,11 @@ function createGlobalSync() {
         )
         setStore("session", reconcile(sessions, { key: "id" }))
         cleanupDroppedSessionCaches(store, setStore, sessions, setSessionTodo)
-        sessionMeta.set(directory, { limit })
+        sessionMeta.set(dir, { limit, path: target })
       })
       .catch((err) => {
         console.error("Failed to load sessions", err)
-        const project = getFilename(directory)
+        const project = getFilename(target)
         showToast({
           variant: "error",
           title: language.t("toast.session.listFailed.title", { project }),
@@ -245,10 +248,10 @@ function createGlobalSync() {
         })
       })
 
-    sessionLoads.set(directory, promise)
+    sessionLoads.set(dir, promise)
     promise.finally(() => {
-      sessionLoads.delete(directory)
-      children.unpin(directory)
+      sessionLoads.delete(dir)
+      children.unpin(dir)
     })
     return promise
   }
