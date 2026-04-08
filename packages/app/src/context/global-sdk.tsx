@@ -100,21 +100,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let attempt: AbortController | undefined
     let run: Promise<void> | undefined
     let started = false
-    const HEARTBEAT_TIMEOUT_MS = 15_000
-    let lastEventAt = Date.now()
-    let heartbeat: ReturnType<typeof setTimeout> | undefined
-    const resetHeartbeat = () => {
-      lastEventAt = Date.now()
-      if (heartbeat) clearTimeout(heartbeat)
-      heartbeat = setTimeout(() => {
-        attempt?.abort()
-      }, HEARTBEAT_TIMEOUT_MS)
-    }
-    const clearHeartbeat = () => {
-      if (!heartbeat) return
-      clearTimeout(heartbeat)
-      heartbeat = undefined
-    }
 
     const start = () => {
       if (started) return run
@@ -122,7 +107,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       run = (async () => {
         while (!abort.signal.aborted && started) {
           attempt = new AbortController()
-          lastEventAt = Date.now()
           const onAbort = () => {
             attempt?.abort()
           }
@@ -142,9 +126,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               },
             })
             let yielded = Date.now()
-            resetHeartbeat()
             for await (const event of events.stream) {
-              resetHeartbeat()
               streamErrorLogged = false
               const directory = event.directory ? directoryKey(event.directory) : "global"
               const payload = event.payload
@@ -180,7 +162,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           } finally {
             abort.signal.removeEventListener("abort", onAbort)
             attempt = undefined
-            clearHeartbeat()
           }
 
           if (abort.signal.aborted || !started) return
@@ -196,7 +177,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const stop = () => {
       started = false
       attempt?.abort()
-      clearHeartbeat()
     }
 
     const reconnect = () => {
@@ -207,9 +187,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     onMount(() => {
       makeEventListener(document, "visibilitychange", () => {
         if (document.visibilityState !== "visible") return
-        if (!started) return
-        if (Date.now() - lastEventAt < HEARTBEAT_TIMEOUT_MS) return
-        attempt?.abort()
+        reconnect()
       })
       makeEventListener(window, "focus", reconnect)
       makeEventListener(window, "opencode:resume", reconnect as EventListener)
