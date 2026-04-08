@@ -101,7 +101,7 @@ public class KeepaliveService extends Service {
       }
 
       if (task == null) task = new KeepalivePoller(this, new KeepaliveClient(), note);
-      if (stream == null) stream = new KeepaliveWatcher(task, new KeepaliveClient());
+      if (stream == null) stream = new KeepaliveWatcher(task, new KeepaliveClient(), note);
 
       if (poller == null || poller.isShutdown()) {
         poller = Executors.newSingleThreadScheduledExecutor();

@@ -138,6 +138,11 @@ final class KeepaliveState {
     stage.put(sessionID, "waiting");
   }
 
+  static boolean asked(String sessionID) {
+    if (sessionID == null || sessionID.isEmpty()) return false;
+    return waiting.getOrDefault(sessionID, 0) > 0;
+  }
+
   static void reply(String sessionID) {
     if (sessionID == null || sessionID.isEmpty()) return;
     if (!tracked.contains(sessionID)) return;

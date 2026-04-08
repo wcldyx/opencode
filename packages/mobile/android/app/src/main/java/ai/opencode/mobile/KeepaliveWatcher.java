@@ -5,10 +5,12 @@ import org.json.JSONObject;
 final class KeepaliveWatcher implements Runnable {
   private final KeepalivePoller poller;
   private final KeepaliveClient client;
+  private final KeepaliveNotifier note;
 
-  KeepaliveWatcher(KeepalivePoller poller, KeepaliveClient client) {
+  KeepaliveWatcher(KeepalivePoller poller, KeepaliveClient client, KeepaliveNotifier note) {
     this.poller = poller;
     this.client = client;
+    this.note = note;
   }
 
   @Override
@@ -50,8 +52,12 @@ final class KeepaliveWatcher implements Runnable {
     if (sessionID.isEmpty()) return;
     if (!KeepaliveState.tracked().contains(sessionID)) return;
     if ("permission.asked".equals(type) || "question.asked".equals(type)) {
+      boolean first = !KeepaliveState.asked(sessionID);
       KeepaliveState.ask(sessionID);
       KeepaliveService.refresh();
+      if (first && KeepaliveState.notifyOn() && !KeepaliveState.active()) {
+        note.ask(sessionID, KeepaliveState.href(sessionID), "permission.asked".equals(type));
+      }
       return;
     }
 

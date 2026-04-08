@@ -122,6 +122,50 @@ final class KeepaliveNotifier {
     mgr.notify(sessionID.hashCode(), item);
   }
 
+  void ask(String sessionID, String href, boolean permission) {
+    ensure();
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      ring();
+      vibrate();
+    }
+
+    Intent launch = svc.getPackageManager().getLaunchIntentForPackage(svc.getPackageName());
+    if (launch == null) launch = new Intent(svc, MainActivity.class);
+    launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    if (href != null) launch.putExtra("href", href);
+    PendingIntent open = PendingIntent.getActivity(
+      svc,
+      sessionID.hashCode(),
+      launch,
+      PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+    );
+
+    String title = permission ? "OpenCode · 需要确认" : "OpenCode · 需要回复";
+    String text = permission ? "权限工具正在等待你的确认" : "提问工具正在等待你的输入";
+
+    Notification item = new NotificationCompat.Builder(svc, TASK_CHANNEL)
+      .setSmallIcon(R.mipmap.ic_launcher)
+      .setContentTitle(title)
+      .setContentText(text)
+      .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+      .setAutoCancel(true)
+      .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setDefaults(NotificationCompat.DEFAULT_ALL)
+      .setVibrate(TASK_VIBRATE)
+      .setSound(sound())
+      .setColor(Color.parseColor("#7C3AED"))
+      .setSubText("OpenCode")
+      .setContentIntent(open)
+      .addAction(android.R.drawable.ic_menu_view, "打开会话", open)
+      .build();
+
+    NotificationManager mgr = svc.getSystemService(NotificationManager.class);
+    if (mgr == null) return;
+    mgr.notify(sessionID.hashCode(), item);
+  }
+
   private Uri sound() {
     return Uri.parse("android.resource://" + svc.getPackageName() + "/raw/" + resourceName());
   }
