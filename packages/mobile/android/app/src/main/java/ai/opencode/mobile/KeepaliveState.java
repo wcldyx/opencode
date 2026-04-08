@@ -30,6 +30,7 @@ final class KeepaliveState {
   private static final Map<String, Long> start = new ConcurrentHashMap<>();
   private static final Map<String, String> dir = new ConcurrentHashMap<>();
   private static final Map<String, String> stage = new ConcurrentHashMap<>();
+  private static final Map<String, Integer> waiting = new ConcurrentHashMap<>();
 
   private static volatile String url;
   private static volatile String username;
@@ -56,6 +57,7 @@ final class KeepaliveState {
       start.clear();
       dir.clear();
       stage.clear();
+      waiting.clear();
     }
     url = nextUrl;
     username = nextUser;
@@ -84,6 +86,7 @@ final class KeepaliveState {
     start.put(sessionID, System.currentTimeMillis());
     if (directory != null && !directory.isEmpty()) dir.put(sessionID, directory);
     stage.put(sessionID, "sending");
+    waiting.remove(sessionID);
     persist();
   }
 
@@ -94,6 +97,7 @@ final class KeepaliveState {
     start.remove(sessionID);
     dir.remove(sessionID);
     stage.remove(sessionID);
+    waiting.remove(sessionID);
     persist();
   }
 
@@ -123,12 +127,32 @@ final class KeepaliveState {
   static void setStage(String sessionID, String value) {
     if (sessionID == null || sessionID.isEmpty()) return;
     if (!tracked.contains(sessionID)) return;
+    if ("receiving".equals(value) && waiting.getOrDefault(sessionID, 0) > 0) return;
     stage.put(sessionID, value);
+  }
+
+  static void ask(String sessionID) {
+    if (sessionID == null || sessionID.isEmpty()) return;
+    if (!tracked.contains(sessionID)) return;
+    waiting.merge(sessionID, 1, Integer::sum);
+    stage.put(sessionID, "waiting");
+  }
+
+  static void reply(String sessionID) {
+    if (sessionID == null || sessionID.isEmpty()) return;
+    if (!tracked.contains(sessionID)) return;
+    int count = waiting.getOrDefault(sessionID, 0);
+    if (count <= 1) {
+      waiting.remove(sessionID);
+      if ("waiting".equals(stage.get(sessionID))) stage.put(sessionID, "receiving");
+      return;
+    }
+    waiting.put(sessionID, count - 1);
   }
 
   static String status() {
     if (tracked.isEmpty()) return "空闲";
-    if (stage.containsValue("waiting")) return "等待授权";
+    if (!waiting.isEmpty()) return "等待用户确认";
     if (stage.containsValue("receiving")) return "接收中";
     if (stage.containsValue("sending")) return "发送中";
     return "处理中";

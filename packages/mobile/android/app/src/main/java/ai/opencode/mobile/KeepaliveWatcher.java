@@ -50,7 +50,13 @@ final class KeepaliveWatcher implements Runnable {
     if (sessionID.isEmpty()) return;
     if (!KeepaliveState.tracked().contains(sessionID)) return;
     if ("permission.asked".equals(type) || "question.asked".equals(type)) {
-      KeepaliveState.setStage(sessionID, "waiting");
+      KeepaliveState.ask(sessionID);
+      KeepaliveService.refresh();
+      return;
+    }
+
+    if ("permission.replied".equals(type) || "question.replied".equals(type) || "question.rejected".equals(type)) {
+      KeepaliveState.reply(sessionID);
       KeepaliveService.refresh();
       return;
     }
