@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -18,7 +19,9 @@ import androidx.core.app.NotificationCompat;
 
 final class KeepaliveNotifier {
   static final String KEEPALIVE_CHANNEL = "opencode-keepalive";
-  static final String TASK_CHANNEL = "opencode-task-v2";
+  static final String TASK_CHANNEL = "opencode-task-v4";
+  static final String TASK_CHANNEL_OLD = "opencode-task-v3";
+  static final String TASK_CHANNEL_OLD_2 = "opencode-task-v2";
   static final long[] TASK_VIBRATE = new long[] { 0, 420 };
 
   private final KeepaliveService svc;
@@ -29,8 +32,8 @@ final class KeepaliveNotifier {
 
   void ensure() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-    NotificationManager manager = svc.getSystemService(NotificationManager.class);
-    if (manager == null) return;
+    NotificationManager mgr = svc.getSystemService(NotificationManager.class);
+    if (mgr == null) return;
 
     NotificationChannel keepalive = new NotificationChannel(
       KEEPALIVE_CHANNEL,
@@ -38,8 +41,10 @@ final class KeepaliveNotifier {
       NotificationManager.IMPORTANCE_LOW
     );
     keepalive.setDescription("OpenCode 后台常驻服务");
-    manager.createNotificationChannel(keepalive);
-    manager.deleteNotificationChannel(TASK_CHANNEL);
+    mgr.createNotificationChannel(keepalive);
+
+    mgr.deleteNotificationChannel(TASK_CHANNEL_OLD_2);
+    mgr.deleteNotificationChannel(TASK_CHANNEL_OLD);
 
     NotificationChannel done = new NotificationChannel(
       TASK_CHANNEL,
@@ -47,9 +52,12 @@ final class KeepaliveNotifier {
       NotificationManager.IMPORTANCE_HIGH
     );
     done.setDescription("任务完成提醒");
-    done.enableVibration(false);
-    done.setSound(null, null);
-    manager.createNotificationChannel(done);
+    done.enableVibration(true);
+    done.setVibrationPattern(TASK_VIBRATE);
+    done.setSound(sound(), new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build());
+    done.enableLights(true);
+    done.setLightColor(Color.parseColor("#7C3AED"));
+    mgr.createNotificationChannel(done);
   }
 
   Notification keepalive() {
@@ -75,13 +83,16 @@ final class KeepaliveNotifier {
 
   void done(String sessionID, String href, String body) {
     ensure();
-    ring();
-    vibrate();
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      ring();
+      vibrate();
+    }
+
     Intent launch = svc.getPackageManager().getLaunchIntentForPackage(svc.getPackageName());
     if (launch == null) launch = new Intent(svc, MainActivity.class);
     launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
     if (href != null) launch.putExtra("href", href);
-    PendingIntent pending = PendingIntent.getActivity(
+    PendingIntent open = PendingIntent.getActivity(
       svc,
       sessionID.hashCode(),
       launch,
@@ -90,20 +101,25 @@ final class KeepaliveNotifier {
 
     Notification item = new NotificationCompat.Builder(svc, TASK_CHANNEL)
       .setSmallIcon(R.mipmap.ic_launcher)
-      .setContentTitle("任务已完成")
-      .setContentText(body)
-      .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+      .setContentTitle("OpenCode · 任务完成")
+      .setContentText(body == null || body.isEmpty() ? "点击查看会话" : body)
+      .setStyle(new NotificationCompat.BigTextStyle().bigText(body == null || body.isEmpty() ? "任务已完成" : body))
       .setAutoCancel(true)
-      .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_MESSAGE)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-      .setSilent(true)
-      .setContentIntent(pending)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
+      .setDefaults(NotificationCompat.DEFAULT_ALL)
+      .setVibrate(TASK_VIBRATE)
+      .setSound(sound())
+      .setColor(Color.parseColor("#7C3AED"))
+      .setSubText("OpenCode")
+      .setContentIntent(open)
+      .addAction(android.R.drawable.ic_menu_view, "打开会话", open)
       .build();
 
-    NotificationManager manager = svc.getSystemService(NotificationManager.class);
-    if (manager == null) return;
-    manager.notify(sessionID.hashCode(), item);
+    NotificationManager mgr = svc.getSystemService(NotificationManager.class);
+    if (mgr == null) return;
+    mgr.notify(sessionID.hashCode(), item);
   }
 
   private Uri sound() {
