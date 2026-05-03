@@ -1,6 +1,7 @@
-import { getFilename } from "@opencode-ai/util/path"
+import { getFilename } from "@opencode-ai/core/util/path"
 import { type Session } from "@opencode-ai/sdk/v2/client"
 import { directoryKey } from "@/utils/directory"
+import { pathKey } from "@/utils/path-key"
 
 type SessionStore = {
   session?: Session[]
@@ -78,11 +79,11 @@ export const errorMessage = (err: unknown, fallback: string) => {
 }
 
 export const effectiveWorkspaceOrder = (local: string, dirs: string[], persisted?: string[]) => {
-  const root = workspaceKey(local)
+  const root = pathKey(local)
   const live = new Map<string, string>()
 
   for (const dir of dirs) {
-    const key = workspaceKey(dir)
+    const key = pathKey(dir)
     if (key === root) continue
     if (!live.has(key)) live.set(key, dir)
   }
@@ -91,7 +92,7 @@ export const effectiveWorkspaceOrder = (local: string, dirs: string[], persisted
 
   const result = [local]
   for (const dir of persisted) {
-    const key = workspaceKey(dir)
+    const key = pathKey(dir)
     if (key === root) continue
     const match = live.get(key)
     if (!match) continue
