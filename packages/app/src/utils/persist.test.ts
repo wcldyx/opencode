@@ -82,6 +82,22 @@ describe("persist localStorage resilience", () => {
     expect(storageApi.getItem("value")).toBeNull()
   })
 
+  test("quota eviction preserves server persistence keys", () => {
+    storage.setItem("opencode.settings.dat:defaultServerUrl", "https://example.com")
+    storage.setItem("opencode.global.dat:server", '{"list":[{"type":"http","http":{"url":"https://example.com"}}],"projects":{},"lastProject":{},"active":"https://example.com"}')
+    storage.setItem("opencode.large:item", "x".repeat(1024))
+
+    const storageApi = persistTesting.localStorageWithPrefix("opencode.quota.scope")
+    storageApi.setItem("value", '{"value":1}')
+
+    expect(storage.getItem("opencode.settings.dat:defaultServerUrl")).toBe("https://example.com")
+    expect(storage.getItem("opencode.global.dat:server")).toBe(
+      '{"list":[{"type":"http","http":{"url":"https://example.com"}}],"projects":{},"lastProject":{},"active":"https://example.com"}',
+    )
+    expect(storage.events).not.toContain("remove:opencode.settings.dat:defaultServerUrl")
+    expect(storage.events).not.toContain("remove:opencode.global.dat:server")
+  })
+
   test("disables only the failing scope when storage throws", () => {
     const bad = persistTesting.localStorageWithPrefix("opencode.throw.scope")
     bad.setItem("value", '{"value":1}')

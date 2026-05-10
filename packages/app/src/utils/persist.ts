@@ -24,6 +24,7 @@ type PersistTarget = {
 const LEGACY_STORAGE = "default.dat"
 const GLOBAL_STORAGE = "opencode.global.dat"
 const LOCAL_PREFIX = "opencode."
+const protectedKeys = new Set([`${GLOBAL_STORAGE}:server`, "opencode.settings.dat:defaultServerUrl"])
 const fallback = new Map<string, boolean>()
 
 const CACHE_MAX_ENTRIES = 500
@@ -115,6 +116,7 @@ function evict(storage: Storage, keep: string, value: string) {
     if (!name) continue
     if (!name.startsWith(LOCAL_PREFIX)) continue
     if (name === keep) continue
+    if (protectedKeys.has(name)) continue
     const stored = storage.getItem(name)
     items.push({ key: name, size: stored?.length ?? 0 })
   }
