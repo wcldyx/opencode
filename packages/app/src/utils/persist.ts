@@ -512,16 +512,17 @@ export function persisted<T>(
   const defaults = snapshot(store[0])
   const legacy = config.legacy ?? []
 
-  const isDesktop = platform.platform === "desktop" && !!platform.storage
+  const isPlatformStorage = (platform.platform === "desktop" || platform.platform === "mobile") && !!platform.storage
 
   const currentStorage = (() => {
-    if (isDesktop) return platform.storage?.(config.storage)
+    if (isPlatformStorage) return platform.storage?.(config.storage)
     if (!config.storage) return localStorageDirect()
     return localStorageWithPrefix(config.storage)
   })()
 
   const legacyStorage = (() => {
-    if (!isDesktop) return localStorageDirect()
+    if (platform.platform === "mobile") return localStorageDirect()
+    if (!isPlatformStorage) return localStorageDirect()
     if (!config.storage) return platform.storage?.()
     return platform.storage?.(LEGACY_STORAGE)
   })()
@@ -529,7 +530,7 @@ export function persisted<T>(
   const legacyStorageNames = config.legacyStorageNames ?? []
 
   const storage = (() => {
-    if (!isDesktop) {
+    if (!isPlatformStorage) {
       const current = currentStorage as SyncStorage
       const legacyStore = legacyStorage as SyncStorage
       const legacyStores = legacyStorageNames.map(localStorageWithPrefix)
@@ -561,9 +562,11 @@ export function persisted<T>(
 
     const current = currentStorage as AsyncStorage
     const legacyStore = legacyStorage as AsyncStorage | undefined
-    const legacyStores = legacyStorageNames
-      .map((name) => platform.storage?.(name) as AsyncStorage | undefined)
-      .filter((x) => !!x)
+    const legacyStores = (
+      platform.platform === "mobile"
+        ? legacyStorageNames.map(localStorageWithPrefix)
+        : legacyStorageNames.map((name) => platform.storage?.(name) as AsyncStorage | undefined).filter((x) => !!x)
+    ) as AsyncStorage[]
 
     const api: AsyncStorage = {
       getItem: async (key) => {

@@ -5,6 +5,8 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface, PlatformProvider, ServerConnection, type Platform } from "@opencode-ai/app"
 import { useSettings } from "../../app/src/context/settings"
 import pkg from "../package.json"
+import { Capacitor } from "@capacitor/core"
+import { nativeKeepalive } from "./bridge-native"
 import {
   backgroundStatus,
   back,
@@ -31,6 +33,12 @@ const root = document.getElementById("root")
 if (!(root instanceof HTMLElement)) throw new Error("root not found")
 
 const serverKey = "opencode.settings.dat:defaultServerUrl"
+const serverStateKey = "opencode.global.dat:server"
+type NativeStorage = {
+  getItem(key: string): Promise<string | null>
+  setItem(key: string, value: string): Promise<void>
+  removeItem(key: string): Promise<void>
+}
 const read = () => {
   if (typeof localStorage === "undefined") return null
   try {
@@ -53,7 +61,55 @@ const write = (value: string | null) => {
   }
 }
 
-const url = read() ?? import.meta.env.VITE_OPENCODE_SERVER_URL ?? "http://localhost:4096"
+const storageName = (name?: string) => name ?? "default.dat"
+const storageKey = (name: string | undefined, key: string) => `${storageName(name)}:${key}`
+const nativeStorage = (name?: string): NativeStorage => ({
+  getItem: async (key) => {
+    const item = await nativeKeepalive.storageGet({ name: storageName(name), key }).catch(() => ({ value: undefined }))
+    if (typeof item.value === "string") {
+      if (typeof localStorage !== "undefined") localStorage.setItem(storageKey(name, key), item.value)
+      return item.value
+    }
+    if (typeof localStorage === "undefined") return null
+    return localStorage.getItem(storageKey(name, key))
+  },
+  setItem: async (key, value) => {
+    await nativeKeepalive.storageSet({ name: storageName(name), key, value })
+    if (typeof localStorage !== "undefined") localStorage.setItem(storageKey(name, key), value)
+  },
+  removeItem: async (key) => {
+    await nativeKeepalive.storageRemove({ name: storageName(name), key })
+    if (typeof localStorage !== "undefined") localStorage.removeItem(storageKey(name, key))
+  },
+})
+
+const serverUrl = (value: unknown) => {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object" || Array.isArray(value)) return
+  const item = value as { http?: unknown; url?: unknown }
+  if (item.http && typeof item.http === "object" && !Array.isArray(item.http)) {
+    const http = item.http as { url?: unknown }
+    return typeof http.url === "string" ? http.url : undefined
+  }
+  return typeof item.url === "string" ? item.url : undefined
+}
+
+const readActiveServer = () => {
+  if (typeof localStorage === "undefined") return null
+  try {
+    const raw = localStorage.getItem(serverStateKey)
+    if (!raw) return null
+    const state = JSON.parse(raw) as { active?: unknown; list?: unknown }
+    const active = typeof state.active === "string" && /^https?:\/\//.test(state.active) ? state.active : undefined
+    if (!active) return null
+    const list = Array.isArray(state.list) ? state.list : []
+    return list.map(serverUrl).find((item) => item === active) ?? active
+  } catch {
+    return null
+  }
+}
+
+const url = read() ?? readActiveServer() ?? import.meta.env.VITE_OPENCODE_SERVER_URL ?? "http://localhost:4096"
 const key = "opencode.mobile.bg-hint.v1"
 const gap = 3 * 24 * 60 * 60 * 1000
 
@@ -93,7 +149,11 @@ const platform: Platform = {
   openPowerSettings,
   backgroundStatus,
   fetch: nativeFetch,
-  configureTracker,
+  storage: Capacitor.isNativePlatform() ? nativeStorage : undefined,
+  configureTracker: (input) => {
+    write(input.url)
+    return configureTracker(input)
+  },
   setTrackerNotify,
   trackSession,
   untrackSession,

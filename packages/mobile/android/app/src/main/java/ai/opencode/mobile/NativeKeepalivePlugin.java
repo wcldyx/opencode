@@ -3,6 +3,7 @@ package ai.opencode.mobile;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ComponentName;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
@@ -20,6 +21,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "NativeKeepalive")
 public class NativeKeepalivePlugin extends Plugin {
   private static final String TAG = "NativeKeepalive";
+  private static final String STORAGE_PREFIX = "opencode.storage.";
 
   @PluginMethod
   public void configure(PluginCall call) {
@@ -70,6 +72,55 @@ public class NativeKeepalivePlugin extends Plugin {
       KeepaliveService.untrack(sessionID);
       KeepaliveService.refresh();
     }
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void config(PluginCall call) {
+    KeepaliveService.attach(getContext());
+    JSObject out = new JSObject();
+    out.put("url", KeepaliveState.url());
+    out.put("username", KeepaliveState.username());
+    out.put("password", KeepaliveState.password());
+    call.resolve(out);
+  }
+
+  @PluginMethod
+  public void storageGet(PluginCall call) {
+    String key = call.getString("key");
+    if (key == null || key.isEmpty()) {
+      call.reject("Missing key");
+      return;
+    }
+    JSObject out = new JSObject();
+    out.put("value", storage(call.getString("name")).getString(key, null));
+    call.resolve(out);
+  }
+
+  @PluginMethod
+  public void storageSet(PluginCall call) {
+    String key = call.getString("key");
+    String value = call.getString("value");
+    if (key == null || key.isEmpty()) {
+      call.reject("Missing key");
+      return;
+    }
+    if (value == null) {
+      call.reject("Missing value");
+      return;
+    }
+    storage(call.getString("name")).edit().putString(key, value).apply();
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void storageRemove(PluginCall call) {
+    String key = call.getString("key");
+    if (key == null || key.isEmpty()) {
+      call.reject("Missing key");
+      return;
+    }
+    storage(call.getString("name")).edit().remove(key).apply();
     call.resolve();
   }
 
@@ -217,5 +268,10 @@ public class NativeKeepalivePlugin extends Plugin {
   private void start() {
     Intent intent = new Intent(getContext(), KeepaliveService.class);
     ContextCompat.startForegroundService(getContext(), intent);
+  }
+
+  private SharedPreferences storage(String name) {
+    String value = name == null || name.isEmpty() ? "default.dat" : name;
+    return getContext().getSharedPreferences(STORAGE_PREFIX + value, Context.MODE_PRIVATE);
   }
 }

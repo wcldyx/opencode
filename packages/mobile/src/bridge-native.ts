@@ -35,10 +35,14 @@ export type Native = {
 
 export type Keepalive = {
   configure(input: { url: string; username?: string; password?: string; notify?: boolean }): Promise<void>
+  config(): Promise<{ url?: string; username?: string; password?: string }>
   track(input: { sessionID: string; directory?: string }): Promise<void>
   untrack(input: { sessionID: string }): Promise<void>
   setNotify(input: { notify: boolean }): Promise<void>
   setSound(input: { sound?: string }): Promise<void>
+  storageGet(input: { name?: string; key: string }): Promise<{ value?: string }>
+  storageSet(input: { name?: string; key: string; value: string }): Promise<void>
+  storageRemove(input: { name?: string; key: string }): Promise<void>
   consumeLaunchHref(): Promise<{ href?: string }>
   openNotificationSettings(): Promise<void>
   backgroundStatus(): Promise<{ maker: string; model: string; battery: boolean }>
