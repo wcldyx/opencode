@@ -8,6 +8,15 @@ import pkg from "../package.json"
 import { Capacitor } from "@capacitor/core"
 import { nativeKeepalive } from "./bridge-native"
 import {
+  hasRemoteServer,
+  protectServerState,
+  readStoredServer,
+  serverBackupKey,
+  serverStoreKey,
+  serverStoreName,
+  serverUrl,
+} from "./server-storage"
+import {
   backgroundStatus,
   back,
   bindBack,
@@ -61,38 +70,145 @@ const write = (value: string | null) => {
   }
 }
 
+const writeNativeDefault = async (value: string | null) => {
+  if (!Capacitor.isNativePlatform()) return
+  if (value !== null) {
+    await nativeKeepalive.storageSet({ name: "opencode.settings.dat", key: "defaultServerUrl", value }).catch(
+      () => undefined,
+    )
+    return
+  }
+  await nativeKeepalive.storageRemove({ name: "opencode.settings.dat", key: "defaultServerUrl" }).catch(() => undefined)
+}
+
 const storageName = (name?: string) => name ?? "default.dat"
 const storageKey = (name: string | undefined, key: string) => `${storageName(name)}:${key}`
+const isServerStorage = (name: string | undefined, key: string) => storageName(name) === serverStoreName && key === serverStoreKey
+const readLocal = (key: string) => {
+  if (typeof localStorage === "undefined") return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+const writeLocal = (key: string, value: string) => {
+  if (typeof localStorage === "undefined") return
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    return
+  }
+}
+const removeLocal = (key: string) => {
+  if (typeof localStorage === "undefined") return
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    return
+  }
+}
+const recoveredServerState = async () => {
+  const config = await nativeKeepalive.config().catch(() => ({ url: undefined, username: undefined, password: undefined }))
+  const stored = await nativeKeepalive.storageGet({ name: "opencode.settings.dat", key: "defaultServerUrl" }).catch(
+    () => ({ value: undefined }),
+  )
+  const url =
+    typeof config.url === "string" && config.url
+      ? config.url
+      : typeof stored.value === "string" && stored.value
+        ? stored.value
+        : undefined
+  if (!url) return null
+  const conn: { type: "http"; http: { url: string; username?: string; password?: string } } = {
+    type: "http",
+    http: { url },
+  }
+  if (typeof config.username === "string" && config.username) conn.http.username = config.username
+  if (typeof config.password === "string" && config.password) conn.http.password = config.password
+  return JSON.stringify({ list: [conn], projects: {}, lastProject: {}, active: url })
+}
 const nativeStorage = (name?: string): NativeStorage => ({
   getItem: async (key) => {
     const item = await nativeKeepalive.storageGet({ name: storageName(name), key }).catch(() => ({ value: undefined }))
     if (typeof item.value === "string") {
-      if (typeof localStorage !== "undefined") localStorage.setItem(storageKey(name, key), item.value)
+      if (isServerStorage(name, key) && !hasRemoteServer(item.value)) {
+        const backup = await nativeKeepalive.storageGet({ name: serverStoreName, key: serverBackupKey }).catch(() => ({
+          value: undefined,
+        }))
+        if (typeof backup.value === "string" && hasRemoteServer(backup.value)) return backup.value
+      }
+      writeLocal(storageKey(name, key), item.value)
       return item.value
     }
-    if (typeof localStorage === "undefined") return null
-    return localStorage.getItem(storageKey(name, key))
+    const local = readLocal(storageKey(name, key))
+    if (local !== null) {
+      await nativeKeepalive.storageSet({ name: storageName(name), key, value: local }).catch(() => undefined)
+      return local
+    }
+    if (!isServerStorage(name, key)) return null
+    const backup = await nativeKeepalive.storageGet({ name: serverStoreName, key: serverBackupKey }).catch(() => ({
+      value: undefined,
+    }))
+    if (typeof backup.value === "string" && hasRemoteServer(backup.value)) return backup.value
+    const recovered = await recoveredServerState()
+    if (!recovered) return null
+    await nativeKeepalive.storageSet({ name: storageName(name), key, value: recovered }).catch(() => undefined)
+    writeLocal(storageKey(name, key), recovered)
+    return recovered
   },
   setItem: async (key, value) => {
-    await nativeKeepalive.storageSet({ name: storageName(name), key, value })
-    if (typeof localStorage !== "undefined") localStorage.setItem(storageKey(name, key), value)
+    const next = isServerStorage(name, key)
+      ? await protectServerState({
+          next: value,
+          current: async () =>
+            (await nativeKeepalive.storageGet({ name: serverStoreName, key: serverStoreKey }).catch(() => ({
+              value: undefined,
+            }))).value,
+          backup: async () =>
+            (await nativeKeepalive.storageGet({ name: serverStoreName, key: serverBackupKey }).catch(() => ({
+              value: undefined,
+            }))).value,
+          local: () => readLocal(storageKey(serverStoreName, serverStoreKey)),
+          recovered: recoveredServerState,
+        })
+      : value
+    await nativeKeepalive.storageSet({ name: storageName(name), key, value: next })
+    if (isServerStorage(name, key) && hasRemoteServer(next)) {
+      await nativeKeepalive.storageSet({ name: serverStoreName, key: serverBackupKey, value: next }).catch(
+        () => undefined,
+      )
+    }
+    writeLocal(storageKey(name, key), next)
   },
   removeItem: async (key) => {
+    if (isServerStorage(name, key)) {
+      const next = await protectServerState({
+        next: JSON.stringify({ list: [], projects: {}, lastProject: {} }),
+        current: async () =>
+          (await nativeKeepalive.storageGet({ name: serverStoreName, key: serverStoreKey }).catch(() => ({
+            value: undefined,
+          }))).value,
+        backup: async () =>
+          (await nativeKeepalive.storageGet({ name: serverStoreName, key: serverBackupKey }).catch(() => ({
+            value: undefined,
+          }))).value,
+        local: () => readLocal(storageKey(serverStoreName, serverStoreKey)),
+        recovered: recoveredServerState,
+      })
+      if (hasRemoteServer(next)) {
+        await nativeKeepalive.storageSet({ name: serverStoreName, key: serverStoreKey, value: next })
+        await nativeKeepalive.storageSet({ name: serverStoreName, key: serverBackupKey, value: next }).catch(
+          () => undefined,
+        )
+        writeLocal(storageKey(name, key), next)
+        return
+      }
+    }
     await nativeKeepalive.storageRemove({ name: storageName(name), key })
-    if (typeof localStorage !== "undefined") localStorage.removeItem(storageKey(name, key))
+    removeLocal(storageKey(name, key))
   },
 })
-
-const serverUrl = (value: unknown) => {
-  if (typeof value === "string") return value
-  if (!value || typeof value !== "object" || Array.isArray(value)) return
-  const item = value as { http?: unknown; url?: unknown }
-  if (item.http && typeof item.http === "object" && !Array.isArray(item.http)) {
-    const http = item.http as { url?: unknown }
-    return typeof http.url === "string" ? http.url : undefined
-  }
-  return typeof item.url === "string" ? item.url : undefined
-}
 
 const readActiveServer = () => {
   if (typeof localStorage === "undefined") return null
@@ -109,7 +225,36 @@ const readActiveServer = () => {
   }
 }
 
-const url = read() ?? readActiveServer() ?? import.meta.env.VITE_OPENCODE_SERVER_URL ?? "http://localhost:4096"
+const readNative = async () => {
+  if (!Capacitor.isNativePlatform()) return null
+  const serverState = await nativeKeepalive.storageGet({ name: serverStoreName, key: serverStoreKey }).catch(() => ({
+    value: undefined,
+  }))
+  const backup = await nativeKeepalive.storageGet({ name: serverStoreName, key: serverBackupKey }).catch(() => ({
+    value: undefined,
+  }))
+  if (!hasRemoteServer(serverState.value) && hasRemoteServer(backup.value)) {
+    await nativeKeepalive.storageSet({ name: serverStoreName, key: serverStoreKey, value: backup.value! }).catch(
+      () => undefined,
+    )
+  }
+
+  const stored = readStoredServer(hasRemoteServer(serverState.value) ? serverState.value : backup.value)
+  if (stored) return stored
+
+  const backupStored = readStoredServer(backup.value)
+  if (backupStored) return backupStored
+
+  const defaultUrl = await nativeKeepalive.storageGet({ name: "opencode.settings.dat", key: "defaultServerUrl" }).catch(
+    () => ({ value: undefined }),
+  )
+  if (typeof defaultUrl.value === "string" && defaultUrl.value) return defaultUrl.value
+
+  const config = await nativeKeepalive.config().catch(() => ({ url: undefined }))
+  return typeof config.url === "string" && config.url ? config.url : null
+}
+
+const initialUrl = async () => (await readNative()) ?? read() ?? readActiveServer() ?? import.meta.env.VITE_OPENCODE_SERVER_URL ?? "http://localhost:4096"
 const key = "opencode.mobile.bg-hint.v1"
 const gap = 3 * 24 * 60 * 60 * 1000
 
@@ -152,17 +297,19 @@ const platform: Platform = {
   storage: Capacitor.isNativePlatform() ? nativeStorage : undefined,
   configureTracker: (input) => {
     write(input.url)
+    void writeNativeDefault(input.url)
     return configureTracker(input)
   },
   setTrackerNotify,
   trackSession,
   untrackSession,
   getDefaultServer: async () => {
-    const stored = read()
+    const stored = (await readNative()) ?? read()
     return stored ? ServerConnection.Key.make(stored) : null
   },
   setDefaultServer: (value) => {
     write(value)
+    void writeNativeDefault(value)
   },
 }
 
@@ -206,19 +353,21 @@ void backgroundStatus().then((info) => {
   note()
 })
 
-render(
-  () => (
-    <PlatformProvider value={platform}>
-      <AppBaseProviders>
-        <AppInterface
-          defaultServer={ServerConnection.Key.make(url)}
-          servers={[{ type: "http", http: { url } }]}
-          disableHealthCheck
-        >
-          <Sync />
-        </AppInterface>
-      </AppBaseProviders>
-    </PlatformProvider>
-  ),
-  root,
-)
+void initialUrl().then((url) => {
+  render(
+    () => (
+      <PlatformProvider value={platform}>
+        <AppBaseProviders>
+          <AppInterface
+            defaultServer={ServerConnection.Key.make(url)}
+            servers={[{ type: "http", http: { url } }]}
+            disableHealthCheck
+          >
+            <Sync />
+          </AppInterface>
+        </AppBaseProviders>
+      </PlatformProvider>
+    ),
+    root,
+  )
+})

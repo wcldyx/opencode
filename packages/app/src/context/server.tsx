@@ -301,6 +301,14 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
 
     createEffect(() => {
+      if (!ready()) return
+      if (store.active && state.active !== store.active) {
+        if (allServers().some((server) => ServerConnection.key(server) === store.active)) {
+          setState("active", store.active)
+          return
+        }
+      }
+
       const conn = current()
       if (!conn) return
       const key = ServerConnection.key(conn)
@@ -313,6 +321,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     })
 
     createEffect(() => {
+      if (!ready()) return
       const conn = current()
       if (!conn || conn.type !== "http") return
       void platform.configureTracker?.({

@@ -1,6 +1,6 @@
 import type { Project, UserMessage } from "@opencode-ai/sdk/v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { createQuery, skipToken, useMutation, useQueryClient } from "@tanstack/solid-query"
+import { useMutation } from "@tanstack/solid-query"
 import {
   batch,
   onCleanup,
@@ -8,6 +8,7 @@ import {
   Match,
   Switch,
   createMemo,
+  createSignal,
   createEffect,
   createComputed,
   on,
@@ -326,7 +327,6 @@ export default function Page() {
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
-  const queryClient = useQueryClient()
   const dialog = useDialog()
   const language = useLanguage()
   const platform = usePlatform()
@@ -599,32 +599,43 @@ export default function Page() {
   const vcsKey = createMemo(
     () => ["session-vcs", sdk.directory, sync.data.vcs?.branch ?? "", sync.data.vcs?.default_branch ?? ""] as const,
   )
-  const vcsQuery = createQuery(() => {
+  const [vcsDiffs, setVcsDiffs] = createSignal<ReturnType<typeof list>>([])
+  const [vcsLoading, setVcsLoading] = createSignal(false)
+  let vcsLoad = 0
+  const refreshVcs = () => {
     const mode = vcsMode()
-    const enabled = wantsReview() && sync.project?.vcs === "git"
-
-    return {
-      queryKey: [...vcsKey(), mode] as const,
-      enabled,
-      staleTime: Number.POSITIVE_INFINITY,
-      gcTime: 60 * 1000,
-      queryFn: mode
-        ? () =>
-            sdk.client.vcs
-              .diff({ mode })
-              .then((result) => list(result.data))
-              .catch((error) => {
-                console.debug("[session-review] failed to load vcs diff", { mode, error })
-                return []
-              })
-        : skipToken,
+    if (!wantsReview() || sync.project?.vcs !== "git" || !mode) {
+      setVcsDiffs([])
+      setVcsLoading(false)
+      return
     }
-  })
-  const refreshVcs = () => void queryClient.invalidateQueries({ queryKey: vcsKey() })
+    const id = ++vcsLoad
+    setVcsLoading(true)
+    void sdk.client.vcs
+      .diff({ mode })
+      .then((result) => list(result.data))
+      .catch((error) => {
+        console.debug("[session-review] failed to load vcs diff", { mode, error })
+        return []
+      })
+      .then((diffs) => {
+        if (id !== vcsLoad) return
+        setVcsDiffs(diffs)
+        setVcsLoading(false)
+      })
+  }
+  createEffect(
+    on(
+      () => [wantsReview(), sync.project?.vcs, vcsMode(), ...vcsKey()] as const,
+      () => queueMicrotask(refreshVcs),
+      { defer: true },
+    ),
+  )
+  onMount(() => queueMicrotask(refreshVcs))
   const reviewDiffs = () => {
     if (store.changes === "git" || store.changes === "branch")
       // avoids suspense
-      return vcsQuery.isFetched ? (vcsQuery.data ?? []) : []
+      return vcsLoading() ? [] : vcsDiffs()
     return turnDiffs()
   }
   const reviewCount = () => reviewDiffs().length
@@ -632,14 +643,14 @@ export default function Page() {
   const modeCount = (mode: ChangeMode) => {
     if (mode === "git" || mode === "branch") {
       if (store.changes !== mode) return 0
-      return vcsQuery.isFetched ? (vcsQuery.data ?? []).length : 0
+      return vcsLoading() ? 0 : vcsDiffs().length
     }
     return turnDiffs().length
   }
   const anyReviewCount = createMemo(() => Math.max(modeCount("git"), modeCount("branch"), modeCount("turn")))
   const hasAnyReview = createMemo(() => anyReviewCount() > 0)
   const reviewReady = () => {
-    if (store.changes === "git" || store.changes === "branch") return !vcsQuery.isPending
+    if (store.changes === "git" || store.changes === "branch") return !vcsLoading()
     return true
   }
 
