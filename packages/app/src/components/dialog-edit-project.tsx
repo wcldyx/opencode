@@ -13,7 +13,7 @@ import { getFilename } from "@opencode-ai/core/util/path"
 import { Avatar } from "@opencode-ai/ui/avatar"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
-import { getProjectAvatarSource } from "@/pages/layout/sidebar-items"
+import { getProjectAvatarSource } from "@/pages/layout/helpers"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 

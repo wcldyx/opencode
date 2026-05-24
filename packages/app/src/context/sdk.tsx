@@ -1,52 +1,10 @@
-import type { Event } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { type Accessor, createEffect, createMemo, onCleanup } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
-import { directoryKey, toServerDirectory } from "@/utils/directory"
-
-type SDKEventMap = {
-  [key in Event["type"]]: Extract<Event, { type: key }>
-}
 
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
-  init: (props: { directory: Accessor<string> }) => {
+  init: (props: { directory: string }) => {
     const globalSDK = useGlobalSDK()
-
-    const key = createMemo(() => directoryKey(props.directory()))
-    const dir = createMemo(() => toServerDirectory(key()))
-    const client = createMemo(() =>
-      globalSDK.createClient({
-        directory: dir(),
-        throwOnError: true,
-      }),
-    )
-
-    const emitter = createGlobalEmitter<SDKEventMap>()
-
-    createEffect(() => {
-      const unsub = globalSDK.event.on(key(), (event) => {
-        emitter.emit(event.type, event)
-      })
-      onCleanup(unsub)
-    })
-
-    return {
-      get directory() {
-        return key()
-      },
-      get client() {
-        return client()
-      },
-      event: emitter,
-      get url() {
-        return globalSDK.url
-      },
-      createClient(opts: Parameters<typeof globalSDK.createClient>[0]) {
-        const directory = typeof opts.directory === "string" ? toServerDirectory(directoryKey(opts.directory)) : opts.directory
-        return globalSDK.createClient({ ...opts, directory })
-      },
-    }
+    return globalSDK.createDirSyncContext(props.directory)
   },
 })
